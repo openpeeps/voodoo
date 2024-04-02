@@ -3,5 +3,5 @@
 # (c) 2024 George Lemon | MIT License
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/voodoo
-import voodoo/getter
-export getter
+import voodoo/setget
+export setget
