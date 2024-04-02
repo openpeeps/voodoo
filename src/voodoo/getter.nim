@@ -60,7 +60,8 @@ macro getters*(obj: untyped) =
   obj
 
 macro expandGetters* =
+  ## This is required to insert generated getters
   result = newStmtList()
   for k, x in genGetters:
-    echo x.repr
     add result, x
+  setLen(genGetters, 0)
