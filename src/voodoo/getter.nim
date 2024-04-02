@@ -4,9 +4,9 @@
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/voodoo
 
-import std/[macros, macrocache, strutils]
+import std/[macros, tables, strutils]
 
-const genGetters = CacheTable"genGetters"
+var genGetters {.compileTime.} = OrderedTable[string, NimNode]()
 macro getters*(obj: untyped) =
   # let impl = getImpl(x)
   let objident = obj[0][0][1]
@@ -64,4 +64,4 @@ macro expandGetters* =
   result = newStmtList()
   for k, x in genGetters:
     add result, x
-  setLen(genGetters, 0)
+  clear(genGetters)
