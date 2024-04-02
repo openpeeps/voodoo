@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/openpeeps/voodoo/blob/main/.github/voodoo.png" width="150px" height="160px"><br>
+  <img src="https://github.com/openpeeps/voodoo/blob/main/.github/voodoo.png" width="160px" height="150px"><br>
   Working with Nim's macros 👑 is just Voodoo
 </p>
 
@@ -13,8 +13,8 @@
 </p>
 
 ## 😍 Key Features
-- [x] Open Source | `MIT` License
-- [x] Written in Nim language
+- [x] Compile-time utility tool
+- [x] Generate fast getters/setters
 
 ## Examples
 ```nim
