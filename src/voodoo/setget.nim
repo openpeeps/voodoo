@@ -40,7 +40,6 @@ macro setters*(excludes: untyped, obj: untyped) =
   ## Optionally, you can exclude fields from generation
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
-  echo obj[0].treeRepr
   add obj[0][1], ident("setters")
   obj
 
@@ -106,7 +105,6 @@ macro getters*(obj: untyped) =
 macro getters*(excludes: untyped, obj: untyped) =
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
-  echo obj[0].treeRepr
   add obj[0][1], ident("getters")
   obj
 
