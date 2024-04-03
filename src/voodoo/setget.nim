@@ -32,11 +32,11 @@ proc genProcIdent(x: NimNode): NimNode {.compileTime.} =
 #
 # Setter
 #
-macro setter*(obj: untyped) =
+macro setters*(obj: untyped) =
   ## Generate setter procs from object fields
   discard # todo
 
-macro setter*(excludes: untyped, obj: untyped) =
+macro setters*(excludes: untyped, obj: untyped) =
   ## Optionally, you can exclude fields from generation
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
@@ -54,53 +54,69 @@ macro expandSetters* =
 #
 # Getter
 #
+proc walkField(f: NimNode, id: NimNode) {.compileTime.} =
+  var
+    procName: NimNode
+    returnType = f[^2]
+    fieldName: string
+  for x in f[0..^3]:
+    case x.kind
+    of nnkIdent, nnkAccQuoted:
+      if excludeFields.contains($x):
+        continue
+      fieldName = $x
+      procName = genProcIdent(x)
+    else: discard
+    var body = newStmtList()
+    add body, newCommentStmtNode("Getter handle to return `" & $fieldName & "`")
+    add genGetters[id.strVal],
+      newProc(
+        nnkPostfix.newTree(ident("*"), procName),
+        params = [
+          returnType,
+          nnkIdentDefs.newTree(
+            ident(id.strVal[0].toLowerAscii & id.strVal[1..^1]),
+            id,
+            newEmptyNode()
+          ),
+        ],
+        body = body
+      )
+
 macro getters*(obj: untyped) =
-  ## Generate getter procs from object fields
   let objident = obj[0][0][1]
-  let objf = obj[2][0][2]
+  var objf: NimNode
+  if obj[2].kind == nnkRefTy:
+    objf = obj[2][0][2]
+  else:
+    objf = obj[2][2]
   obj[0] = obj[0][0]
   expectKind objf, nnkRecList
   genGetters[objident.strVal] = newStmtList()
   for f in objf:
-    var procName: NimNode
-    var returnType = f[^2]
-    var fieldName: string
-    for x in f[0..^3]:
-      case x.kind
-      of nnkIdent, nnkAccQuoted:
-        if excludeFields.contains($x):
-          continue
-        fieldName = $x
-        procName = genProcIdent(x)
-      else: discard
-      var body = newStmtList()
-      add body, newCommentStmtNode("Getter handle to return `" & $fieldName & "`")
-      add genGetters[objident.strVal],
-        newProc(
-          nnkPostfix.newTree(ident("*"), procName),
-          params = [
-            returnType,
-            nnkIdentDefs.newTree(
-              ident(objident.strVal[0].toLowerAscii & objident.strVal[1..^1]),
-              objident,
-              newEmptyNode()
-            ),
-          ],
-          body = body
-        )
+    case f.kind
+    of nnkRecCase:
+      for ff in f[1..^1]:
+        expectKind(ff[1], nnkRecList)
+        ff[1][0].walkField(objident)
+    else:
+      f.walkField(objident)
   obj
 
 macro getters*(excludes: untyped, obj: untyped) =
-  ## Optionally, you can exclude fields from generation
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
   echo obj[0].treeRepr
   add obj[0][1], ident("getters")
   obj
 
-macro expandGetters* =
-  ## Required to inject the generated getters in your code
+macro expandGetters*(identRenameCallback: static proc(x: string): string = nil) =
+  ## This is required to insert generated getters
+  ## Use `identRename` to rename  
   result = newStmtList()
   for k, x in genGetters:
+    if identRenameCallback != nil:
+      for p in x:
+        p[0][1] = ident(identRenameCallback(p[0][1].strVal))
     add result, x
   clear(genGetters)
