@@ -40,7 +40,6 @@ macro setters*(excludes: untyped, obj: untyped) =
   ## Optionally, you can exclude fields from generation
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
-  echo obj[0].treeRepr
   add obj[0][1], ident("setters")
   obj
 
@@ -69,8 +68,12 @@ proc walkField(f: NimNode, id: NimNode) {.compileTime.} =
     else: discard
     let paramIdent = ident(id.strVal[0].toLowerAscii & id.strVal[1..^1])
     var body = newStmtList()
-    add body, newCommentStmtNode("Getter handle to return `" & $fieldName & "`")
-    add body, newDotExpr(paramIdent, ident(fieldName))
+    add body, newCommentStmtNode("Get `" & $fieldName & "` from `" & $id & "`")
+    add body, 
+      newAssignment(
+        ident"result",
+        newDotExpr(paramIdent, ident(fieldName))
+      )
     add genGetters[id.strVal],
       newProc(
         nnkPostfix.newTree(ident("*"), procName),
@@ -86,7 +89,13 @@ proc walkField(f: NimNode, id: NimNode) {.compileTime.} =
       )
 
 macro getters*(obj: untyped) =
-  let objident = obj[0][0][1]
+  var objident: NimNode
+  case obj[0][0].kind
+    of nnkPostfix:
+      objident = obj[0][0][1]
+    of nnkIdent:
+      objIdent = obj[0][0]
+    else: discard # error?
   var objf: NimNode
   if obj[2].kind == nnkRefTy:
     objf = obj[2][0][2]
@@ -108,13 +117,19 @@ macro getters*(obj: untyped) =
 macro getters*(excludes: untyped, obj: untyped) =
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
-  echo obj[0].treeRepr
   add obj[0][1], ident("getters")
   obj
 
-macro expandGetters*(identRenameCallback: static proc(x: string): string = nil) =
+macro expandGetters* =
   ## This is required to insert generated getters
-  ## Use `identRename` to rename  
+  result = newStmtList()
+  for k, x in genGetters:
+    add result, x
+  clear(genGetters)
+
+macro expandGetters*(identRenameCallback: static proc(x: string): string) =
+  ## Expand generated getter procedures. Use `identRenameCallback`
+  ## to refine proc identifiers 
   result = newStmtList()
   for k, x in genGetters:
     if identRenameCallback != nil:
