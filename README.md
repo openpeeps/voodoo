@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/openpeeps/voodoo/blob/main/.github/voodoo.png" width="160px" height="150px"><br>
+  <img src="https://github.com/openpeeps/voodoo/blob/main/.github/voodoo.png" width="170px" height="160px"><br>
   Working with Nim's macros 👑 is just Voodoo
 </p>
 
