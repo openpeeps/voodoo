@@ -14,9 +14,14 @@
 
 ## 😍 Key Features
 - [x] Compile-time utility tool
-- [x] Generate fast getters/setters
+- [x] Helps reduce code size & repetitive tasks
+- [x] Generate fast `getters`/`setters`
+- [x] Callee Introspection
 
 ## Examples
+
+#### Getters
+Generate fast getters from object fields. Excluding fields is also possible.
 ```nim
 import pkg/voodoo
 
@@ -24,10 +29,42 @@ type
   Price* {.getters.} = object
     net, gross: string
 
-  Product* {.getters.} = object
+  Product* {.getters: [id].} = object # exclude one or more fields
+    id: string
     title, short_description: string
     prices: Price
+
+expandGetters() # is required to expand generated procs.
 ```
+
+Output:
+```nim
+proc getNet*(price: Price): string =
+  ## Get `net` from `Price`
+  result = price.net
+
+proc getGross*(price: Price): string =
+  ## Get `gross` from `Price`
+  result = price.gross
+
+proc getTitle*(product: Product): string =
+  ## Get `title` from `Product`
+  result = product.title
+
+proc getShortDescription*(product: Product): string =
+  ## Get `short_description` from `Product`
+  result = product.short_description
+
+proc getPrices*(product: Product): seq[Price] =
+  ## Get `prices` from `Product`
+  result = product.prices
+```
+
+#### Setters
+todo
+
+#### Callee 
+todo
 
 ### ❤ Contributions & Support
 - 🐛 Found a bug? [Create a new Issue](https://github.com/openpeeps/voodoo/issues)
