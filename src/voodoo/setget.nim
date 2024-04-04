@@ -40,6 +40,7 @@ macro setters*(excludes: untyped, obj: untyped) =
   ## Optionally, you can exclude fields from generation
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
+  echo obj[0].treeRepr
   add obj[0][1], ident("setters")
   obj
 
@@ -66,15 +67,17 @@ proc walkField(f: NimNode, id: NimNode) {.compileTime.} =
       fieldName = $x
       procName = genProcIdent(x)
     else: discard
+    let paramIdent = ident(id.strVal[0].toLowerAscii & id.strVal[1..^1])
     var body = newStmtList()
     add body, newCommentStmtNode("Getter handle to return `" & $fieldName & "`")
+    add body, newDotExpr(paramIdent, ident(fieldName))
     add genGetters[id.strVal],
       newProc(
         nnkPostfix.newTree(ident("*"), procName),
         params = [
           returnType,
           nnkIdentDefs.newTree(
-            ident(id.strVal[0].toLowerAscii & id.strVal[1..^1]),
+            paramIdent,
             id,
             newEmptyNode()
           ),
@@ -105,6 +108,7 @@ macro getters*(obj: untyped) =
 macro getters*(excludes: untyped, obj: untyped) =
   expectKind excludes, nnkBracket
   excludeFields = excludes.mapIt($it)
+  echo obj[0].treeRepr
   add obj[0][1], ident("getters")
   obj
 
