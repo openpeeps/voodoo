@@ -102,7 +102,6 @@ macro extendable*(x: untyped) =
   elif x[2].kind == nnkEnumTy:
     if ExtendableEnums.hasKey(objName.strVal):
       for enumField in ExtendableEnums[objName.strVal]:
-        echo enumField.repr
         add x[2], enumField
   x
 
