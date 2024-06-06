@@ -67,11 +67,11 @@ template extendCase*(fieldNode: untyped, branchesNode: untyped) =
     Extendables[$objName & "_" & $fieldName] = stmtBranches
   extendCaseMacro(fieldNode, branchesNode)
 
-template extendableCase* {.pragma.}
+template extensibleCase* {.pragma.}
 
-macro extendable*(x: untyped) =
-  ## Mark your object or enum with `extendable` pragma
-  ## for making it extendable from other modules at compile-time.
+macro extensible*(x: untyped) =
+  ## Mark your object or enum with `extensible` pragma
+  ## for making it extensible from other modules
   expectKind(x, nnkTypeDef)
   let objName =
     if x[0][0].kind == nnkPostfix:
@@ -82,18 +82,18 @@ macro extendable*(x: untyped) =
     for objNode in x[2][2]:
       case objNode.kind
       of nnkRecCase:
-        var isExtendable: bool
+        var isExtensible: bool
         if objNode[0][0].kind == nnkPragmaExpr:
           for somePragma in objNode[0][0][^1]:
-            if somePragma.eqIdent"extendableCase":
-              isExtendable = true
+            if somePragma.eqIdent"extensibleCase":
+              isExtensible = true
               break
         let fieldName =
           if objNode[0][0][0].kind == nnkAccQuoted:
             objNode[0][0][0]
           else:
             objNode[0][0]
-        if isExtendable:
+        if isExtensible:
           let key = $objName & "_" & $fieldName
           if Extendables.hasKey(key):
             for br in Extendables[key]:
