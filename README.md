@@ -78,7 +78,7 @@ type
 Done! Now `Cardinal` is an extensible enum. Any other modules/packages importing it 
 can easily add fields to this enum. Yep, that's voodoo!
 
-```
+```nim
 import pkg/voodoo/extensible
 extendEnum Cardinal:
   south
