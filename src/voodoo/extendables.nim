@@ -71,7 +71,11 @@ macro extendable*(x: untyped) =
   ## Mark your object or enum with `extendable` pragma
   ## for making it extendable from other modules at compile-time.
   expectKind(x, nnkTypeDef)
-  let objName = x[0][0]
+  let objName =
+    if x[0][0].kind == nnkPostfix:
+      x[0][0][1]
+    else:
+      x[0][0]
   if x[2].kind == nnkObjectTy:
     for objNode in x[2][2]:
       case objNode.kind
@@ -94,9 +98,8 @@ macro extendable*(x: untyped) =
               insert(x[2][2][1], x[2][2][1].len - 1, br)
       else: discard
   elif x[2].kind == nnkEnumTy:
-    let enumName = x[0][0].strVal
-    if ExtendableEnums.hasKey(enumName):
-      for enumField in ExtendableEnums[enumName]:
+    if ExtendableEnums.hasKey(objName.strVal):
+      for enumField in ExtendableEnums[objName.strVal]:
         add x[2], enumField
   x
 
