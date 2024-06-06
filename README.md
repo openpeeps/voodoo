@@ -32,7 +32,7 @@ type
   Product* {.getters: [id].} = object # exclude one or more fields
     id: string
     title, short_description: string
-    prices: Price
+    price: Price
 
 expandGetters() # is required to expand generated procs.
 ```
@@ -55,16 +55,41 @@ proc getShortDescription*(product: Product): string =
   ## Get `short_description` from `Product`
   result = product.short_description
 
-proc getPrices*(product: Product): seq[Price] =
-  ## Get `prices` from `Product`
-  result = product.prices
+proc getPrices*(product: Product): Price =
+  ## Get `price` from `Product`
+  result = product.price
 ```
 
 #### Setters
 todo
 
-#### Callee 
-todo
+#### Extensibles
+It's easy to make extensible enums/objects. This may allow other modules/packages
+to extend the functionality as if they were written in the original source.
+
+Also, `extensible` pragma works with both public or private definitions. Well, that looks like Voodoo to me!
+
+```nim
+import pkg/voodoo/extensible
+type
+  Cardinal* {.extensible} = enum
+    north, west
+```
+Done! Now `Cardinal` is an extensible enum. Any other modules/packages importing it 
+can easily add fields to this enum. Yep, that's voodoo!
+
+```
+import pkg/voodoo/extensible
+extendEnum Cardinal:
+  south
+  east
+
+import ./cardinalModule
+
+assert compiles(Cardinal.north)
+assert compiles(Cardinal.south)
+assert compiles(Cardinal.east)
+```
 
 ### ❤ Contributions & Support
 - 🐛 Found a bug? [Create a new Issue](https://github.com/openpeeps/voodoo/issues)
