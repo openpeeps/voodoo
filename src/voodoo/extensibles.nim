@@ -25,7 +25,11 @@ macro extendEnum*(x: untyped, fields: untyped) =
       add otherFields, f
     else:
       error("Voodoo - Invalid enum extension. Expects either `nnkAsgn`, or `nnkIdent`")
-  ExtendableEnums[$x] = otherFields
+  if ExtendableEnums.hasKey($x):
+    for xfield in otherFields:
+      add ExtendableEnums[$x], xfield
+  else:
+    ExtendableEnums[$x] = otherFields
 
 template extendCase*(fieldNode: untyped, branchesNode: untyped) =
   ## Extend an object variant by adding new branches.
