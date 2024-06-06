@@ -16,14 +16,16 @@ macro extendEnum*(x: untyped, fields: untyped) =
   ## Extend a specific enum by adding extra fields
   expectKind(x, nnkIdent)
   expectKind(fields, nnkStmtList)
+  var otherFields = newStmtList()
   for f in fields:
-    if f.kind notin {nnkAsgn, nnkIdent}:
+    case f.kind 
+    of nnkAsgn:
+      add otherFields, nnkEnumFieldDef.newTree(f[0], f[1])
+    of nnkIdent:
+      add otherFields, f
+    else:
       error("Voodoo - Invalid enum extension. Expects either `nnkAsgn`, or `nnkIdent`")
-    ExtendableEnums[$x] =
-      if f.kind == nnkAsgn:
-        nnkEnumFieldDef.newTree(f[0], f[1])
-      else:
-        nnkEnumFieldDef.newTree(f, newEmptyNode())
+  ExtendableEnums[$x] = otherFields
 
 template extendCase*(fieldNode: untyped, branchesNode: untyped) =
   ## Extend an object variant by adding new branches.
@@ -100,6 +102,7 @@ macro extendable*(x: untyped) =
   elif x[2].kind == nnkEnumTy:
     if ExtendableEnums.hasKey(objName.strVal):
       for enumField in ExtendableEnums[objName.strVal]:
+        echo enumField.repr
         add x[2], enumField
   x
 
