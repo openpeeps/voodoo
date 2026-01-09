@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://github.com/openpeeps/voodoo/blob/main/.github/voodoo.png" width="170px" height="160px"><br>
-  Working with Nim's macros is just Voodoo! A collection of utilities
-  to build awesome tools!
+  Working with Nim's macros is just Voodoo!<br>
+  A collection of utilities to build awesome tools!
 </p>
 
 <p align="center">
