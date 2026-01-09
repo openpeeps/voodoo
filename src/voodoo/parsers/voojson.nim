@@ -97,6 +97,16 @@ macro toJson*(v: typed, opts: static JsonOptions = nil): untyped =
     return arrayToJson(v, valImpl, opts)
   else: discard
 
+# macro toJsonL*(v: typed, opts: static JsonOptions = nil): untyped =
+#   ## Converts a Nim object to its JSON representation in line-delimited format.
+#   var jsonOptions: JsonOptions
+#   if opts == nil:
+#     jsonOptions = JsonOptions(lineDelimited: true)
+#   else:
+#     jsonOptions = opts
+#     jsonOptions.lineDelimited = true
+#   result = toJson(v, jsonOptions)
+
 proc dumpHook*[T](s: var string, arr: seq[T]) = 
   ## Converts a sequence of items to a JSON array string.
   s.add("[")
@@ -362,117 +372,6 @@ proc walk(parser: var Parser): Token {.discardable.} =
   parser.next = parser.nextToken()
   result = parser.curr
 
-#
-# Forward decl for JSON parsing
-#
-proc parseObject(parser: var Parser, obj: var JsonNode)
-proc parseArray(parser: var Parser, arr: var JsonNode)
-
-#
-# JSON Parsing Implementation
-#
-proc parseObject(parser: var Parser, obj: var JsonNode) =
-  # Parse a JSON object
-  while true:
-    let token = parser.walk()
-    case token.kind
-    of tkEOF:
-      raise newException(ValueError, "EOF reached while parsing object")
-    of tkRBrace:
-      break # end of object
-    of tkString:
-      let key = token.value.get()
-      let colonToken = parser.walk()
-      if colonToken.kind != tkColon:
-        raise newException(ValueError,
-          "Expected ':' after key '" & key & "' at line " & $token.line & ", column " & $token.col)
-      let valToken = parser.walk()
-      case valToken.kind
-        of tkString:
-          obj[key] = newJString(valToken.value.get())
-        of tkNumber:
-          let num =
-            try:
-              newJInt(parseInt(valToken.value.get()))
-            except ValueError:
-              newJFloat(parseFloat(valToken.value.get()))
-          obj[key] = num
-        of tkTrue, tkFalse:
-          obj[key] = newJBool(valToken.kind == tkTrue)
-        of tkNull:
-          obj[key] = newJNull()
-        of tkLBrace:
-          var nestedObj = newJObject()
-          parser.parseObject(nestedObj)
-          obj[key] = nestedObj
-        of tkLBracket:
-          var nestArr = newJArray()
-          parser.parseArray(nestArr)
-          obj[key] = nestArr
-        else:
-          parser.error(unexpectedToken % [$valToken.kind])
-    of tkComma:
-      continue
-    else:
-      parser.error(unexpectedToken % [$token.kind])
-
-proc parseArray(parser: var Parser, arr: var JsonNode) =
-  # Parse a JSON array to JsonNode
-  while true:
-    let token = parser.walk()
-    case token.kind
-    of tkEOF:
-      parser.error(errorEndOfFile % "array")
-    of tkRBracket:
-      break # end of array
-    of tkString:
-      arr.add(newJString(token.value.get()))
-    of tkNumber:
-      let num =
-        try:
-          newJInt(parseInt(token.value.get()))
-        except ValueError:
-          newJFloat(parseFloat(token.value.get()))
-      arr.add(num)
-    of tkTrue, tkFalse:
-      arr.add(newJBool(token.kind == tkTrue))
-    of tkNull:
-      arr.add(newJNull())
-    of tkLBrace:
-      var nestedObj = newJObject()
-      parser.parseObject(nestedObj)
-      arr.add(nestedObj)
-    of tkComma:
-      continue
-    else:
-      parser.error(unexpectedToken % [$token.kind])
-
-proc parseJson(parser: var Parser, v: var JsonNode) =
-  # Parse a JSON string and fill the `JsonNode` structure
-  while true:
-    let token = parser.walk()
-    case token.kind
-    of tkEOF: break # end of file
-    of tkLBrace:
-      var obj = newJObject()
-      parser.parseObject(obj)
-      if v != nil:
-        v.add(obj)
-      else:
-        v = obj
-    of tkLBracket:
-      var arr = newJArray()
-      parser.parseArray(arr)
-      if v != nil:
-        v.add(arr)
-      else:
-        v = arr
-    else: discard
-
-proc fromJson*(str: string): JsonNode =
-  ## Parse a JSON from `str` and returns the standard `JsonNode`
-  var parser = Parser(lexer: newLexer(str))
-  parser.parseJson(result)
 
 #
 # JSON Parsing implementation to Nim objects
@@ -625,6 +524,132 @@ proc parseHook*[T](parser: var Parser, field: string, v: var seq[T]) =
       parser.walk()
   parser.expectSkip(tkRBracket) # end of array
 
+#
+# JsonNode Objects
+#
+#
+# Forward decl for JSON parsing
+#
+proc parseObject(parser: var Parser, obj: var JsonNode)
+proc parseArray(parser: var Parser, arr: var JsonNode)
+
+#
+# JSON Parsing Implementation
+#
+proc parseObject(parser: var Parser, obj: var JsonNode) =
+  # Parse a JSON object
+  while parser.curr.kind != tkRBrace:
+    let token = parser.walk()
+    case token.kind
+    of tkEOF:
+      raise newException(ValueError, "EOF reached while parsing object")
+    of tkString:
+      let key = token.value.get()
+      let colonToken = parser.walk()
+      if colonToken.kind != tkColon:
+        raise newException(ValueError,
+          "Expected ':' after key '" & key & "' at line " & $token.line & ", column " & $token.col)
+      let valToken = parser.walk()
+      case valToken.kind
+        of tkString:
+          obj[key] = newJString(valToken.value.get())
+        of tkNumber:
+          let num =
+            try:
+              newJInt(parseInt(valToken.value.get()))
+            except ValueError:
+              newJFloat(parseFloat(valToken.value.get()))
+          obj[key] = num
+        of tkTrue, tkFalse:
+          obj[key] = newJBool(valToken.kind == tkTrue)
+        of tkNull:
+          obj[key] = newJNull()
+        of tkLBrace:
+          var nestedObj = newJObject()
+          parser.parseObject(nestedObj)
+          obj[key] = nestedObj
+        of tkLBracket:
+          var nestArr = newJArray()
+          parser.parseArray(nestArr)
+          obj[key] = nestArr
+        else:
+          parser.error(unexpectedToken % [$valToken.kind])
+    of tkComma:
+      continue
+    else:
+      parser.error(unexpectedToken % [$token.kind])
+  parser.walk() # consume the closing '}'
+
+proc parseArray(parser: var Parser, arr: var JsonNode) =
+  # Parse a JSON array to JsonNode
+  while parser.curr.kind != tkRBracket:
+    let token = parser.walk()
+    case token.kind
+    of tkEOF:
+      parser.error(errorEndOfFile % "array")
+    of tkLBracket:
+      # nested array
+      var nestedArr = newJArray()
+      parser.parseArray(nestedArr)
+      arr.add(nestedArr)
+    of tkString:
+      arr.add(newJString(token.value.get()))
+    of tkNumber:
+      let num =
+        try:
+          newJInt(parseInt(token.value.get()))
+        except ValueError:
+          newJFloat(parseFloat(token.value.get()))
+      arr.add(num)
+    of tkTrue, tkFalse:
+      arr.add(newJBool(token.kind == tkTrue))
+    of tkNull:
+      arr.add(newJNull())
+    of tkLBrace:
+      var nestedObj = newJObject()
+      parser.parseObject(nestedObj)
+      arr.add(nestedObj)
+    of tkComma, tkRBracket:
+      continue
+    else:
+      parser.error(unexpectedToken % [$token.kind])
+  parser.walk() # consume the closing ']'
+
+proc fromJson*(str: string): JsonNode =
+  ## Parse a JSON from `str` and returns the standard `JsonNode`
+  var parser = Parser(lexer: newLexer(str))
+  parser.curr = parser.nextToken()
+  parser.next = parser.nextToken()
+  case parser.curr.kind
+  of tkLBrace:
+    result = newJObject()
+    parser.parseObject(result)
+  else:
+    parser.error(unexpectedToken % [$parser.curr.kind])
+
+proc fromJsonL*(str: string): JsonNode = 
+  ## Parse line-delimited JSON from `str` and returns a `JsonNode` array
+  var parser = Parser(lexer: newLexer(str))
+  parser.curr = parser.nextToken()
+  parser.next = parser.nextToken()
+  result = newJArray()
+  while parser.curr.kind != tkEof:
+    case parser.curr.kind
+    of tkLBrace:
+      var obj = newJObject()
+      parser.parseObject(obj)
+      result.add(obj)
+    of tkLBracket:
+      var arr = newJArray()
+      parser.parseArray(arr)
+      result.add(arr)
+    else:
+      echo parser.curr
+      parser.error(unexpectedToken % [$parser.curr.kind])
+
+#
+# Nim Objects
+#
 proc parseJson(parser: var Parser, v: var object) =
   case parser.curr.kind
   of tkLBrace:
@@ -634,7 +659,8 @@ proc parseJson(parser: var Parser, v: var object) =
 
 macro fromJsonMacro(x: typed, str: typed): untyped =
   # macro to parse JSON string `str` into object of type `x`
-  let objIdent = x.getType()[1]
+  var objIdent = x.getTypeImpl()[1]
+  # var objRef: bool
   var
     blockStmtList = newStmtList()
     blockStmtId = genSym(nskLabel, "voodoo")
@@ -651,4 +677,33 @@ macro fromJsonMacro(x: typed, str: typed): untyped =
 
 proc fromJson*[T](s: string, x: typedesc[T]): T =
   ## Provide a direct to object conversion from JSON string to Nim objects
-  return fromJsonMacro(x, s)
+  when x is JsonNode:
+    return fromJson(s)
+  else:
+    return fromJsonMacro(x, s)
+
+
+when isMainModule:
+
+  let data = """
+{"name": "Gilbert", "session": "2013", "score": 24, "completed": true}
+{"name": "Alexa", "session": "2013", "score": 29, "completed": true}
+{"name": "May", "session": "2012B", "score": 14, "completed": false}
+{"name": "Deloise", "session": "2012A", "score": 19, "completed": true} 
+  """
+
+  let arrayData = """
+["Name", "Session", "Score", "Completed"]
+["Gilbert", "2013", 24, true]
+["Alexa", "2013", 29, true]
+["May", "2012B", 14, false]
+["Deloise", "2012A", 19, true] 
+  """
+
+  let nestedData = """
+{"name": "Gilbert", "wins": [["straight", "7♣"], ["one pair", "10♥"]]}
+{"name": "Alexa", "wins": [["two pair", "4♠"], ["two pair", "9♠"]]}
+{"name": "May", "wins": []}
+{"name": "Deloise", "wins": [["three of a kind", "5♣"]]}
+  """
+  echo fromJsonL(nestedData)
