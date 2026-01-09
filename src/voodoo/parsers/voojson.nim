@@ -97,16 +97,6 @@ macro toJson*(v: typed, opts: static JsonOptions = nil): untyped =
     return arrayToJson(v, valImpl, opts)
   else: discard
 
-# macro toJsonL*(v: typed, opts: static JsonOptions = nil): untyped =
-#   ## Converts a Nim object to its JSON representation in line-delimited format.
-#   var jsonOptions: JsonOptions
-#   if opts == nil:
-#     jsonOptions = JsonOptions(lineDelimited: true)
-#   else:
-#     jsonOptions = opts
-#     jsonOptions.lineDelimited = true
-#   result = toJson(v, jsonOptions)
-
 proc dumpHook*[T](s: var string, arr: seq[T]) = 
   ## Converts a sequence of items to a JSON array string.
   s.add("[")
@@ -192,7 +182,7 @@ proc arrayToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
       str.add("[")
       if `v`.len > 0:
         dumpHook(str, `v`[0]) # first item without comma
-        for i, item in `v`:
+        for i, item in `v`[1..^1]:
           str.add(",")
           dumpHook(str, item)
       str.add("]")
@@ -574,7 +564,7 @@ proc parseObject(parser: var Parser, obj: var JsonNode) =
           obj[key] = nestArr
         else:
           parser.error(unexpectedToken % [$valToken.kind])
-    of tkComma:
+    of tkComma, tkRBrace:
       continue
     else:
       parser.error(unexpectedToken % [$token.kind])
@@ -681,29 +671,3 @@ proc fromJson*[T](s: string, x: typedesc[T]): T =
     return fromJson(s)
   else:
     return fromJsonMacro(x, s)
-
-
-when isMainModule:
-
-  let data = """
-{"name": "Gilbert", "session": "2013", "score": 24, "completed": true}
-{"name": "Alexa", "session": "2013", "score": 29, "completed": true}
-{"name": "May", "session": "2012B", "score": 14, "completed": false}
-{"name": "Deloise", "session": "2012A", "score": 19, "completed": true} 
-  """
-
-  let arrayData = """
-["Name", "Session", "Score", "Completed"]
-["Gilbert", "2013", 24, true]
-["Alexa", "2013", 29, true]
-["May", "2012B", 14, false]
-["Deloise", "2012A", 19, true] 
-  """
-
-  let nestedData = """
-{"name": "Gilbert", "wins": [["straight", "7♣"], ["one pair", "10♥"]]}
-{"name": "Alexa", "wins": [["two pair", "4♠"], ["two pair", "9♠"]]}
-{"name": "May", "wins": []}
-{"name": "Deloise", "wins": [["three of a kind", "5♣"]]}
-  """
-  echo fromJsonL(nestedData)
