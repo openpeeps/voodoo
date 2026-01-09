@@ -31,7 +31,48 @@ macro extendEnum*(x: untyped, fields: untyped) =
   else:
     ExtendableEnums[$x] = otherFields
 
-template extendCase*(fieldNode: untyped, branchesNode: untyped) =
+macro extendProc*(x: untyped) =
+  ## Extend a module by adding custom procedures
+  let moduleSource = instantiationInfo(fullPaths = true).filename
+  if ExtendableProcs.hasKey(moduleSource):
+    var existingProcs = ExtendableProcs[moduleSource]
+    if x.kind == nnkStmtList:
+      for procNode in x:
+        add existingProcs, procNode
+    else:
+      add existingProcs, x
+    ExtendableProcs[moduleSource] = existingProcs
+  else:
+    if x.kind == nnkStmtList:
+      ExtendableProcs[moduleSource] = x
+    else:
+      var newProcs = newStmtList()
+      add newProcs, x
+      ExtendableProcs[moduleSource] = newProcs
+
+macro extendCase*(struct: untyped) =
+  ## Extend an object variant by adding new branches at compile time.
+  expectKind(struct[0], nnkTypeSection)
+  expectKind(struct[0][0], nnkTypeDef)
+  let objDef = struct[0][0]
+  let objName = objDef[0]
+  var caseFieldName: NimNode
+  # todo handle pragmas?
+  var objCases: seq[NimNode]
+  if objDef[2].kind == nnkRefTy:
+    # objDef[2] = objDef[2][0]
+    expectKind(objDef[2][0][2], nnkRecList)
+    # the first case, which is the case we want to extend
+    expectKind(objDef[2][0][2][0], nnkRecCase)
+    let recCase = objDef[2][0][2][0]
+    caseFieldName = recCase[0][0] # ident
+    objCases = objDef[2][0][2][0][1..^1]
+  else:
+    expectKind(objDef[2], nnkObjectTy)
+    # the first case, which is the case we want to extend
+  Extendables[$objName & "_" & $caseFieldName] = newStmtList().add(objCases)
+
+template extendCase2*(fieldNode: untyped, branchesNode: untyped) =
   ## Extend an object variant by adding new branches.
   ## This macro can be mixed with `extendEnum
   macro extendCaseMacro(x, branches) =
@@ -45,6 +86,7 @@ template extendCase*(fieldNode: untyped, branchesNode: untyped) =
     for br in branches:
       if not br[0].eqIdent "branch":
         error("Voodoo - Invalid branch extension. Expected a `branch` command")
+      echo br.treeRepr
       let branchType = br[1]
       expectKind(br, nnkCommand)
       expectKind(br[1], nnkIdent)
@@ -82,8 +124,9 @@ macro extensible*(x: untyped) =
       x[0][0][1]
     else:
       x[0][0]
-  if x[2].kind == nnkObjectTy:
-    for objNode in x[2][2]:
+  if x[2].kind in {nnkObjectTy, nnkRefTy}:
+    let obj = if x[2].kind == nnkRefTy: x[2][0][2] else: x[2][2]
+    for objNode in obj:
       case objNode.kind
       of nnkRecCase:
         var isExtensible: bool
@@ -95,13 +138,19 @@ macro extensible*(x: untyped) =
         let fieldName =
           if objNode[0][0][0].kind == nnkAccQuoted:
             objNode[0][0][0]
+          elif objNode[0][0].kind == nnkPragmaExpr:
+            objNode[0][0][0][1]
           else:
             objNode[0][0]
         if isExtensible:
+          # checking if the case variant is marked as extensible
           let key = $objName & "_" & $fieldName
           if Extendables.hasKey(key):
             for br in Extendables[key]:
-              insert(x[2][2][1], x[2][2][1].len - 1, br)
+              if x[2].kind == nnkRefTy:
+                insert(x[2][0][2][1], x[2][0][2][1].len - 1, br)
+              else:
+                insert(x[2][2][1], x[2][2][1].len - 1, br)
       else: discard
   elif x[2].kind == nnkEnumTy:
     if ExtendableEnums.hasKey(objName.strVal):
