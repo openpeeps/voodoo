@@ -3,5 +3,6 @@
 # (c) 2024 George Lemon | MIT License
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/voodoo
-import voodoo/setget
-export setget
+
+import voodoo/[callee, setget, extensibles]
+export callee, setget, extensibles
