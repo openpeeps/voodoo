@@ -1,6 +1,6 @@
 # Working with Nim's macros is just Voodoo
 #
-# (c) 2025 George Lemon | MIT License
+# (c) 2026 George Lemon | MIT License
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/voodoo
 
@@ -71,12 +71,13 @@ template skippable*() {.pragma.}
 # Forward declarations
 proc objectToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode
 proc arrayToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode
-proc nimToJson*(val: string): string
-proc nimToJson*(val: Integers): string
-proc nimToJson*(val: float32|float64): string
-proc nimToJson*(val: bool): string
-proc nimToJson*(val: ref object): string
-proc nimToJson*(val: object): string
+
+proc dumpHook*(s: var string, val: string)
+proc dumpHook*(s: var string, val: Integers)
+proc dumpHook*(s: var string, val: float32|float64)
+proc dumpHook*(s: var string, val: bool)
+proc dumpHook*(s: var string, val: ref object)
+proc dumpHook*(s: var string, val: object)
 
 proc parseJson(parser: var Parser, v: var object)
 
@@ -96,41 +97,41 @@ macro toJson*(v: typed, opts: static JsonOptions = nil): untyped =
     return arrayToJson(v, valImpl, opts)
   else: discard
 
-proc nimToJson*[T](arr: seq[T]): string = 
+proc dumpHook*[T](s: var string, arr: seq[T]) = 
   ## Converts a sequence of items to a JSON array string.
-  result = "["
+  s.add("[")
   for i, item in arr:
-    if i > 0: result.add(",")
-    result.add(item.nimToJson())
-  result.add("]")
+    if i > 0: s.add(",") # add comma between items
+    s.dumpHook(item)
+  s.add("]")
 
-proc nimToJson*(val: string): string = 
+proc dumpHook*(s: var string, val: string) = 
   ## Converts a string to JSON
-  result = "\"" & val & "\""
+  s.add("\"" & val & "\"")
 
-proc nimToJson*(val: Integers): string = 
+proc dumpHook*(s: var string, val: Integers) = 
   ## Converts int to JSON
-  result = $val
+  s.add($val)
 
-proc nimToJson*(val: float32|float64): string = 
+proc dumpHook*(s: var string, val: float32|float64) = 
   ## Converts float to JSON
-  result = $val
+  s.add($val)
 
-proc nimToJson*(val: bool): string = 
+proc dumpHook*(s: var string, val: bool) = 
   ## Converts a bool to JSON
-  result = $val
+  s.add($val)
 
-proc nimToJson*(val: ref object): string = 
+proc dumpHook*(s: var string, val: ref object) = 
   ## Converts a ref object to JSON
-  if val == nil: return "null"
-  toJson(val)
+  if val == nil: s.add("null")
+  dumpHook(s, val)
 
-proc nimToJson*(val: object): string = 
+proc dumpHook*(s: var string, val: object) = 
   ## Converts a ref object to JSON
-  toJson(val)
+  dumpHook(s, val)
 
 proc objectToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
-  let strObjFields = newStmtList()
+  let strObj = newStmtList()
   var i = 0
   let res = genSym(nskVar, "res")
   var len = valImpl[2].len
@@ -144,15 +145,18 @@ proc objectToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
           # in the skipFields option
           inc i
           continue
-      var strKeyVal: NimNode =
-        nnkInfix.newTree(
-          ident"&",
-          newLit("\"" & fieldName & "\":"),
-          newCall(ident"nimToJson", newDotExpr(v, ident(fieldName)))
-        )
+      # var strKeyVal: NimNode =
+      #   nnkInfix.newTree(
+      #     ident"&",
+      #     newLit("\"" & fieldName & "\":"),
+      #     newCall(ident"dumpHook",  newDotExpr(v, ident(fieldName)))
+      #   )
       if i != 0 and i < len:
-        strObjFields.add(newCall(ident"add", res, newLit(",")))
-      strObjFields.add(newCall(ident"add", res, strKeyVal))
+        strObj.add(newCall(ident"add", res, newLit(",")))
+      strObj.add(newCall(ident"add", res, newLit(fieldName & ":")))
+      strObj.add(
+        newCall(ident("dumpHook"), res, newDotExpr(v, ident(fieldName)))
+      )
       inc i
     of nnkRecCase:
       discard # handle object variants
@@ -162,28 +166,27 @@ proc objectToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
   result.add quote do:
     block `objectSerialization`:
       var `res` = "{"
-      `strObjFields`
+      `strObj`
       `res`.add("}")
       `res`
 
 proc arrayToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
   ## Converts a Nim array or sequence to its JSON representation.
   var strArrayItems = newStmtList()
-  var res = genSym(nskVar, "voodooArray")
-  var blockLabel = genSym(nskLabel, "arraySerialization")
+  var blockLabel = genSym(nskLabel, "VoodooArraySerialization")
   result = newStmtList()
+  # echo v.getImpl().treerepr
   result.add quote do:
     block `blockLabel`:
-      var `res` = "["
-      var i = 0
-      for item in `v`:
-        if i != 0:
-          `res`.add(',')
-        `res`.add(nimToJson(item))
-        inc i
-      `res`.add("]")
-      `res`
-
+      var str: string
+      str.add("[")
+      if `v`.len > 0:
+        dumpHook(str, `v`[0]) # first item without comma
+        for i, item in `v`:
+          str.add(",")
+          dumpHook(str, item)
+      str.add("]")
+      move(str) # return the JSON string
 #
 # JSON Parser
 #
