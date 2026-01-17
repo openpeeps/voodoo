@@ -124,11 +124,26 @@ proc dumpHook*(s: var string, val: bool) =
 proc dumpHook*(s: var string, val: ref object) = 
   ## Converts a ref object to JSON
   if val == nil: s.add("null")
-  dumpHook(s, val)
+  var i = 0
+  var objFieldPairs: seq[string]
+  for key, val in fieldPairs(val[]):
+    objFieldPairs.add(key) # kinda hacky but works
+  s.add("{")
+  for fieldName, v in val[].fieldPairs:
+    s.add("\"" & fieldName & "\":")
+    dumpHook(s, v)
+    if i > 0 and fieldName != objFieldPairs[^1]:
+      s.add(",") # add comma between fields
+    inc i
+  s.add("}")
 
 proc dumpHook*(s: var string, val: object) = 
   ## Converts a ref object to JSON
   dumpHook(s, val)
+
+proc dumpHook*(s: var string, v: enum) =
+  ## Converts an enum to JSON
+  s.add("\"" & $v & "\"")
 
 proc objectToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
   let strObj = newStmtList()
@@ -155,7 +170,15 @@ proc objectToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
         strObj.add(newCall(ident"add", res, newLit(",")))
       strObj.add(newCall(ident"add", res, newLit(fieldName & ":")))
       strObj.add(
-        newCall(ident("dumpHook"), res, newDotExpr(v, ident(fieldName)))
+        nnkWhenStmt.newTree(
+          nnkElifBranch.newTree(
+            nnkCall.newTree(
+              ident("compiles"),
+              newCall(ident("dumpHook"), res, newDotExpr(v, ident(fieldName)))
+            ),
+            newCall(ident("dumpHook"), res, newDotExpr(v, ident(fieldName)))
+          )
+        )
       )
       inc i
     of nnkRecCase:
@@ -610,10 +633,14 @@ proc fromJson*(str: string): JsonNode =
   var parser = Parser(lexer: newLexer(str))
   parser.curr = parser.nextToken()
   parser.next = parser.nextToken()
+  echo str
   case parser.curr.kind
   of tkLBrace:
     result = newJObject()
     parser.parseObject(result)
+  of tkLBracket:
+    result = newJArray()
+    parser.parseArray(result)
   else:
     parser.error(unexpectedToken % [$parser.curr.kind])
 
