@@ -43,6 +43,8 @@ proc initPackager*: Packager =
 proc initPackageRemote*: Packager =
   ## Initialize Tim Engine Packager with Remote Source
   result = initPackager()
+  if not fileExists(pkgrHomeDir / ".tokens"):
+    writeFile(pkgrHomeDir / ".tokens", "")
   result.remote = initRemoteSource(pkgrHomeDir)
 
 proc hasPackage*(pkgr: Packager, pkgName: string): bool =
