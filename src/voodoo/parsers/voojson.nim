@@ -14,7 +14,7 @@ import std/[macros, macrocache, json, sequtils,
 
 type
   Integers* = int | int8 | int16 | int32 | int64 | uint8 | uint16 | uint32 | uint64
-  
+
   JsonOptions* = ref object
     ## Options for JSON serialization
     pretty: bool
@@ -58,11 +58,12 @@ type
     kind: TokenKind
     value: Option[string]
     line, col: int
-    
+
   Parser = object
     lexer: Lexer
     prev, curr, next: Token
     options: JsonOptions
+    lvl: int # indentation level
 
   VoodooParsingError* = object of CatchableError
 
@@ -78,6 +79,7 @@ proc dumpHook*(s: var string, val: float32|float64)
 proc dumpHook*(s: var string, val: bool)
 proc dumpHook*(s: var string, val: ref object)
 proc dumpHook*(s: var string, val: object)
+proc dumpHook*(s: var string, val: tuple)
 
 proc parseJson(parser: var Parser, v: var object)
 
@@ -144,6 +146,21 @@ proc dumpHook*(s: var string, val: object) =
 proc dumpHook*(s: var string, v: enum) =
   ## Converts an enum to JSON
   s.add("\"" & $v & "\"")
+
+proc dumpHook*(s: var string, val: tuple) = 
+  ## Converts a tuple to JSON Object
+  s.add("{")
+  var i = 0
+  var tupleKeys: seq[string]
+  for k, v in val.fieldPairs:
+    tupleKeys.add(k) # kinda hacky but works
+  for k, v in val.fieldPairs:
+    s.add("\"" & k & "\":")
+    dumpHook(s, v)
+    if i > 0 and k != tupleKeys[^1]:
+      s.add(",") # add comma between fields
+    inc i
+  s.add("}")
 
 proc objectToJson*(v, valImpl: NimNode, opts: JsonOptions = nil): NimNode =
   let strObj = newStmtList()
