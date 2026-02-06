@@ -4,5 +4,5 @@
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/voodoo
 
-import voodoo/[callee, setget, extensibles]
-export callee, setget, extensibles
+import voodoo/[setget, extensibles]
+export setget, extensibles
