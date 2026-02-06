@@ -65,7 +65,10 @@ proc walkField(f: NimNode, id: NimNode) {.compileTime.} =
         continue
       fieldName = $x
       procName = genProcIdent(x)
-    else: discard
+    of nnkPostfix:
+      fieldName = $x[1]
+      procName = genProcIdent(x[1])
+    else: discard # error
     let paramIdent = ident(id.strVal[0].toLowerAscii & id.strVal[1..^1])
     var body = newStmtList()
     add body, newCommentStmtNode("Get `" & $fieldName & "` from `" & $id & "`")

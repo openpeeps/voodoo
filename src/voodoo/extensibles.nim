@@ -5,12 +5,14 @@
 #          https://github.com/openpeeps/voodoo
 
 import std/[macros, macrocache]
-export macros
+export macros, macrocache
 
 const
   Extendables* = CacheTable"Extendables"
   ExtendableEnums* = CacheTable"ExtendableEnums"
   ExtendableProcs* = CacheTable"ExtendableProcs"
+  ExtendableModules* = CacheTable"ExtendableModules"
+  ExtendableCases* = CacheTable"ExtendableCases"
 
 macro extendEnum*(x: untyped, fields: untyped) =
   ## Extend a specific enum by adding extra fields
@@ -31,24 +33,30 @@ macro extendEnum*(x: untyped, fields: untyped) =
   else:
     ExtendableEnums[$x] = otherFields
 
-macro extendProc*(x: untyped) =
+macro extendModule*(modulePath: static string, x: untyped) =
   ## Extend a module by adding custom procedures
-  let moduleSource = instantiationInfo(fullPaths = true).filename
-  if ExtendableProcs.hasKey(moduleSource):
-    var existingProcs = ExtendableProcs[moduleSource]
+  # let moduleSource = instantiationInfo(fullPaths = true).filename
+  if ExtendableModules.hasKey(modulePath):
+    var existingProcs = ExtendableModules[modulePath]
     if x.kind == nnkStmtList:
       for procNode in x:
         add existingProcs, procNode
     else:
       add existingProcs, x
-    ExtendableProcs[moduleSource] = existingProcs
+    ExtendableModules[modulePath] = existingProcs
   else:
     if x.kind == nnkStmtList:
-      ExtendableProcs[moduleSource] = x
+      ExtendableModules[modulePath] = x
     else:
       var newProcs = newStmtList()
       add newProcs, x
-      ExtendableProcs[moduleSource] = newProcs
+      ExtendableModules[modulePath] = newProcs
+
+macro extendCaseStmt*(id: static string, caseStmt: untyped) =
+  ## Extend an `case` statement by adding new branches at compile time.
+  expectKind(caseStmt, nnkStmtList)
+  expectKind(caseStmt[0], nnkCaseStmt)
+  ExtendableCases[id] = caseStmt
 
 macro extendCase*(struct: untyped) =
   ## Extend an object variant by adding new branches at compile time.
@@ -158,12 +166,41 @@ macro extensible*(x: untyped) =
         add x[2], enumField
   x
 
+template extendableCase*(caseId: static string, caseStmtNode: untyped) =
+  ## Extend an object variant by adding new branches at compile time.
+  macro extendableCaseMacro(id: static string, caseStmt) =
+    let caseSourcePath = instantiationInfo(fullPaths = true).filename
+    expectKind(caseStmt, nnkStmtList)
+    expectKind(caseStmt[0], nnkCaseStmt)
+    for extendableCasePath, extendableCase in ExtendableCases:
+      if ExtendableCases.hasKey(id):
+        let extendedBranch = ExtendableCases[id]
+        expectKind(extendedBranch, nnkStmtList)
+        expectKind(extendedBranch[0], nnkCaseStmt)
+        for newBranch in extendedBranch[0][1..^1]: # skip the case expression
+          caseStmt[0].insert(caseStmt[0].len - 1, newBranch) # before the `else`
+      break
+    result = caseStmt
+  extendableCaseMacro(caseId, caseStmtNode)
+
 template injectHandles* =
   ## Injects custom procedures and other handles.
   ## This macro should be called in the source of the
   ## original module.
   macro expandHandles =
     let moduleName = instantiationInfo(fullPaths = true).filename
-    if likely(ExtendableProcs.hasKey(moduleName)):
-      result = ExtendableProcs[moduleName]
+    for modulePath, procNode in ExtendableProcs:
+      if moduleName.endsWith(modulePath) and ExtendableProcs.hasKey(modulePath):
+        result = ExtendableProcs[modulePath]
+        break
+  expandHandles()
+
+template injectExtendedModule* = 
+  ## Inject custom code into the module.
+  macro expandHandles =
+    let moduleName = instantiationInfo(fullPaths = true).filename
+    for modulePath, nimNode in ExtendableModules:
+      if moduleName.endsWith(modulePath) and ExtendableModules.hasKey(modulePath):
+        result = nimNode
+        break
   expandHandles()

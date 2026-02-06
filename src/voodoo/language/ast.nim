@@ -19,7 +19,7 @@ from pkg/htmlparser import tagToStr, htmlTag, HtmlTag
 export htmlTag, tagToStr, HtmlTag
 
 type
-  NodeKind* = enum
+  NodeKind* {.extensible.} = enum
     # leafs
     nkEmpty          # empty node
     nkBool           # bool literal
@@ -67,8 +67,8 @@ type
     nkStatic         # static statement 
 
     # html
-    nkHtmlElement    # html element - <tag attr="value">...</tag>
-    nkHtmlAttribute
+    # nkHtmlElement    # html element - <tag attr="value">...</tag>
+    # nkHtmlAttribute
 
     # declarations
     nkObject         # object declaration - object o[T, ...] {...}
@@ -77,7 +77,7 @@ type
     nkMacro          # a block - {...}
     nkIterator       # iterator declaration - iterator i(a: s, ...) -> t {...}
     nkBlock          # block statement - block {...}
-    nkJavaScriptSnippet
+    # nkJavaScriptSnippet
     nkDocComment     # doc comment - <!-- ... -->
     nkViewLoader     # view loader using `@view` placeholder
     nkClientBlock    # client block using `@client ... @end`
@@ -152,10 +152,14 @@ proc `[]=`*(node: Node, index: int | BackwardsIndex, child: Node) =
   node.children[index] = child
 
 iterator items*(node: Node): Node =
-  if node.kind == nkHtmlElement:
-    for child in node.childElements:
-      yield child
-  else:  
+  when compiles(NodeKind.nkHtmlElement):
+    if node.kind == nkHtmlElement:
+      for child in node.childElements:
+        yield child
+    else:  
+      for child in node.children:
+        yield child
+  else:
     for child in node.children:
       yield child
 
@@ -228,11 +232,10 @@ proc render*(node: Node): string =
   case node.kind
   of nkEmpty: result = ""
   of nkNil: result = "nil"
-  # html elements
-  of nkHtmlElement: result = ""
-  of nkHtmlAttribute: result = ""
+  # of nkHtmlAttribute: result = ""
   of nkJavaScriptSnippet:
-    result = node.snippetCode
+    discard
+    # result = node.snippetCode
     # if node.snippetCodeAttrs.len > 0:
     #   result.add(" " & node.snippetCodeAttrs.mapIt($1 & "=" & $2.render).join(", "))
   of nkScript: result = node.children.join("\n")
@@ -323,6 +326,7 @@ proc render*(node: Node): string =
     result = "@view\n"
   of nkClientBlock:
     result = "@client\n" & node[0].render.indent(2) & "\n@end"
+  else: discard
 
 proc newNode*(kind: NodeKind): Node =
   ## Construct a new node.
@@ -391,163 +395,7 @@ proc newCall*(ident: Node, args: varargs[Node]): Node =
   for arg in args:
     result.add(arg)
 
-proc newHtmlElement*(tag: HtmlTag, tagStr: string): Node =
-  ## Construct a new HTML element node.
-  case tag
-  of tagUnknown:
-    result = Node(
-      kind: nkHtmlElement,
-      tag: tagUnknown,
-      tagCustom: tagStr
-    )
-  else:
-    result = Node(kind: nkHtmlElement, tag: tag)
-
-proc newHtmlAttribute*(attrType: static HtmlAttributeType, attrNode: Node): Node =
-  ## Construct a new HTML attribute node.
-  result = Node(
-    kind: nkHtmlAttribute,
-    attrType: attrType,
-    attrNode: attrNode
-  )
-
-proc `$`*(tag: HtmlTag): string =
-  result = case tag
-    of tagA: "a"
-    of tagAbbr: "abbr"
-    of tagAcronym: "acronym"
-    of tagAddress: "address"
-    of tagApplet: "applet"
-    of tagArea: "area"
-    of tagArticle: "article"
-    of tagAside: "aside"
-    of tagAudio: "audio"
-    of tagB: "b"
-    of tagBase: "base"
-    of tagBasefont: "basefont"
-    of tagBdi: "bdi"
-    of tagBdo: "bdo"
-    of tagBig: "big"
-    of tagBlockquote: "blockquote"
-    of tagBody: "body"
-    of tagBr: "br"
-    of tagButton: "button"
-    of tagCanvas: "canvas"
-    of tagCaption: "caption"
-    of tagCenter: "center"
-    of tagCite: "cite"
-    of tagCode: "code"
-    of tagCol: "col"
-    of tagColgroup: "colgroup"
-    of tagCommand: "command"
-    of tagDatalist: "datalist"
-    of tagDd: "dd"
-    of tagDel: "del"
-    of tagDetails: "details"
-    of tagDfn: "dfn"
-    of tagDialog: "dialog"
-    of tagDiv: "div"
-    of tagDir: "dir"
-    of tagDl: "dl"
-    of tagDt: "dt"
-    of tagEm: "em"
-    of tagEmbed: "embed"
-    of tagFieldset: "fieldset"
-    of tagFigcaption: "figcaption"
-    of tagFigure: "figure"
-    of tagFont: "font"
-    of tagFooter: "footer"
-    of tagForm: "form"
-    of tagFrame: "frame"
-    of tagFrameset: "frameset"
-    of tagH1: "h1"
-    of tagH2: "h2"
-    of tagH3: "h3"
-    of tagH4: "h4"
-    of tagH5: "h5"
-    of tagH6: "h6"
-    of tagHead: "head"
-    of tagHeader: "header"
-    of tagHgroup: "hgroup"
-    of tagHtml: "html"
-    of tagHr: "hr"
-    of tagI: "i"
-    of tagIframe: "iframe"
-    of tagImg: "img"
-    of tagInput: "input"
-    of tagIns: "ins"
-    of tagIsindex: "isindex"
-    of tagKbd: "kbd"
-    of tagKeygen: "keygen"
-    of tagLabel: "label"
-    of tagLegend: "legend"
-    of tagLi: "li"
-    of tagLink: "link"
-    of tagMap: "map"
-    of tagMark: "mark"
-    of tagMenu: "menu"
-    of tagMeta: "meta"
-    of tagMeter: "meter"
-    of tagNav: "nav"
-    of tagNobr: "nobr"
-    of tagNoframes: "noframes"
-    of tagNoscript: "noscript"
-    of tagObject: "object"
-    of tagOl: "ol"
-    of tagOptgroup: "optgroup"
-    of tagOption: "option"
-    of tagOutput: "output"
-    of tagP: "p"
-    of tagParam: "param"
-    of tagPre: "pre"
-    of tagProgress: "progress"
-    of tagQ: "q"
-    of tagRp: "rp"
-    of tagRt: "rt"
-    of tagRuby: "ruby"
-    of tagS: "s"
-    of tagSamp: "samp"
-    of tagScript: "script"
-    of tagSection: "section"
-    of tagSelect: "select"
-    of tagSmall: "small"
-    of tagSource: "source"
-    of tagSpan: "span"
-    of tagStrike: "strike"
-    of tagStrong: "strong"
-    of tagStyle: "style"
-    of tagSub: "sub"
-    of tagSummary: "summary"
-    of tagSup: "sup"
-    of tagTable: "table"
-    of tagTbody: "tbody"
-    of tagTd: "td"
-    of tagTextarea: "textarea"
-    of tagTfoot: "tfoot"
-    of tagTh: "th"
-    of tagThead: "thead"
-    of tagTime: "time"
-    of tagTitle: "title"
-    of tagTr: "tr"
-    of tagTrack: "track"
-    of tagTt: "tt"
-    of tagU: "u"
-    of tagUl: "ul"
-    of tagVar: "var"
-    of tagVideo: "video"
-    of tagWbr: "wbr"
-    else: "" # non-standard HTML tag / custom tag
-
-proc getTag*(node: Node): string =
-  result =
-    case node.tag
-    of tagUnknown: node.tagCustom
-    else: $node.tag
-
-const voidHtmlElements* = [tagArea, tagBase, tagBr, tagCol,
-  tagEmbed, tagHr, tagImg, tagInput, tagLink, tagMeta,
-  tagParam, tagSource, tagTrack, tagWbr, tagCommand,
-  tagKeygen, tagFrame]
-
 let defaultNil* = newIdent("nil")
   # Used to represent `nil` in the AST
+
+injectExtendedModule()

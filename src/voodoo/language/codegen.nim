@@ -13,6 +13,7 @@ import std/[macros, options, os, hashes, ropes,
 
 import ./[ast, chunk, errors, sym, value, resolver]
 import ../packagemanager/packager
+import ../extensibles
 
 # import ./transpilers/jsgen
 # import ./utils
@@ -80,7 +81,7 @@ var codegenCache* = CodeGenCache()
 
 proc error*(node: Node, msg: string) =
   ## Raise a compile error on the given node.
-  raise (ref TimCompileError)(
+  raise (ref CodeGenError)(
           # file: node.file,
           ln: node.ln,
           col: node.col,
@@ -351,7 +352,7 @@ proc genObjectStorage(node: Node, isInstantiation = false): Sym {.codegen.}
 proc genArray(node: Node, isInstantiation = false): Sym {.codegen.}
 proc genGetField(node: Node): Sym {.codegen.}
 proc genTypeDef(node: Node): Sym {.codegen.}
-proc htmlConstr(node: Node): Sym {.codegen.}
+# proc htmlConstr(node: Node): Sym {.codegen.}
 
 proc instantiate(gen: var CodeGen, sym: Sym, args: seq[Sym],
                  errorNode: Node): Sym =
@@ -1343,9 +1344,9 @@ proc genIf(node: Node, isStmt: bool): Sym {.codegen.} =
   if isStmt:
     result = gen.module.sym"void"
 
-proc storeJavaScript(node: Node): Sym {.codegen.} =
-  ## Store a JavaScript snippet into the current module.
-  gen.script.jsOutput.add(node.snippetCode)
+# proc storeJavaScript(node: Node): Sym {.codegen.} =
+#   ## Store a JavaScript snippet into the current module.
+#   gen.script.jsOutput.add(node.snippetCode)
 
 proc genParam(name: Node, ty: Sym, sym: Sym = nil, isMut, isOpt = false): ProcParam =
   (name, ty, sym, isMut, isOpt)
@@ -1647,98 +1648,15 @@ proc genTypeDef(node: Node): Sym {.codegen.} =
   # Generates code for a type definition
   discard
 
-proc htmlConstr(node: Node): Sym {.codegen.} =
-  # Constructs a new HTML element from Html object
-  if gen.kind == gkProc:
-    node.error(ErrOnlyUsableInAMacro % "HTML")
-  let tag = node.getTag()
-  let tagIdent = ast.newIdent(tag & "_" & $(gen.counter))
-  let tagPos = gen.chunk.getString(tag)
-  result = Sym(
-    name: tagIdent,
-    kind: skHtmlType,
-    isVoidElement: node.tag in voidHtmlElements
-  )
-  if node.attributes.len > 0:
-    gen.chunk.emit(opcBeginHtmlWithAttrs)
-    gen.chunk.emit(tagPos)
-    var classAttributes: seq[string]
-    for attr in node.attributes:
-      case attr.attrType:
-      of htmlAttrClass:
-        classAttributes.add(attr.attrNode.stringVal)
-      of htmlAttrId:
-        gen.chunk.emit(opcWSpace)
-        gen.chunk.emit(opcAttrId)
-        gen.chunk.emit(gen.chunk.getString(attr.attrNode.stringVal))
-      of htmlAttr:
-        if attr.attrNode.kind == nkInfix:
-          gen.chunk.emit(opcWSpace) # add a space before the attribute
-          discard gen.genExpr(attr.attrNode[2]) # value
-          discard gen.genExpr(attr.attrNode[1]) # key
-          gen.chunk.emit(opcAttr) # emit the attribute opcode
-        else:
-          # if the attribute is a simple identifier, we just emit it
-          discard gen.genExpr(attr.attrNode)
-          gen.chunk.emit(opcAttrKey)
-      else: discard
-    if classAttributes.len > 0:
-      # if there are any classes, we emit them as a stringified value
-      # TODO `--optimize` should enable deduplication of classes
-      classAttributes = classAttributes.deduplicate()
-      gen.chunk.emit(opcWSpace)
-      gen.chunk.emit(opcAttrClass)
-      gen.chunk.emit(gen.chunk.getString(classAttributes.join(" ")))
-    gen.chunk.emit(opcAttrEnd)
-  else:
-    gen.chunk.emit(opcBeginHtml)
-    gen.chunk.emit(tagPos)
-  inc(gen.counter)
-
-  if gen.kind == gkToplevel:
-    gen.kind = gkHtmlNest
-
-  if node.childElements.len > 0:
-    gen.pushScope()
-    for subNode in node.childElements:
-      case subNode.kind
-      of nkBool, nkInt, nkFloat, nkString:
-        discard gen.pushConst(subNode)
-        gen.chunk.emit(opcTextHtml)
-      of nkIdent, nkDot, nkInfix, nkBracket:
-        discard gen.genExpr(subNode)
-        gen.chunk.emit(opcTextHtml)
-      of nkCall:
-        if subNode[0].ident[0] == '@':
-          gen.chunk.emit(opcInnerHtml)
-          gen.genStmt(subNode)
-        else:
-          let returnType: Sym = gen.genExpr(subNode)
-          if returnType.tyKind != tyVoid:
-            # if the return type is not void, we emit it as text
-            # so the returned value is rendered as text
-            # inside the HTML element
-            gen.chunk.emit(opcTextHtml)
-      else:
-        gen.chunk.emit(opcInnerHtml)
-        gen.genStmt(subNode)
-    gen.popScope()
-  
-  # add the generated symbol to the module
-  if not result.isVoidElement:
-    gen.chunk.emit(opcCloseHtml)
-    gen.chunk.emit(tagPos)
-
-  if gen.kind == gkHtmlNest:
-    gen.kind = gkToplevel
+injectExtendedModule()
 
 proc genExpr(node: Node, varUnwrap = true): Sym {.codegen.} =
   # Generates code for an expression.
   case node.kind
   of nkBool, nkInt, nkFloat, nkString, nkNil:  # constants
     result = gen.pushConst(node)
-  of nkHtmlElement:
-    result = gen.htmlConstr(node)
+  # of nkHtmlElement:
+  #   result = gen.htmlConstr(node)
   of nkIdent:                     # variables
     var symNode = gen.lookup(node)
     case symNode.kind:
@@ -2346,40 +2264,41 @@ proc genComment(node: Node) {.codegen.} =
 
 proc genStmt(node: Node) {.codegen.} =
   ## Generate code for a statement.
-  case node.kind
-  of nkVar, nkLet, nkConst: gen.genVar(node)    # variable declaration
-  of nkBlock: discard gen.genBlock(node, true)  # block statement
-  of nkIf: discard gen.genIf(node, true)        # if statement
-  of nkWhile: gen.genWhile(node)                # while loop
-  of nkFor: gen.genFor(node)                    # for loop
-  of nkBreak: gen.genBreak(node)                # break statement
-  of nkContinue: gen.genContinue(node)          # continue statement
-  of nkReturn: gen.genReturn(node)              # return statement
-  of nkYield: gen.genYield(node)                # yield statement
-  of nkProc: discard gen.genProc(node)          # procedure declaration
-  of nkMacro: discard gen.genMacro(node)        # macro declaration
-  of nkIterator: discard gen.genIterator(node)  # iterator declaration
-  of nkObjectStorage: discard gen.genObjectStorage(node)      # object declaration
-  of nkObject: discard gen.genObject(node)
-  # of nkTypeDef: discard gen.genTypeDef(node)    # type definition
-  of nkHtmlElement: discard gen.htmlConstr(node) # HTML element construction
-  of nkJavaScriptSnippet: discard gen.storeJavaScript(node) # JavaScript snippet
-  of nkImport, nkInclude: gen.genImport(node) # import statement
-  of nkDocComment: gen.genComment(node) # generate HTML comment
-  of nkViewLoader: gen.chunk.emit(opcViewLoader)
-  of nkClientBlock:
-    # gen.chunk.emit(opcClientBlock)
-    # var jst = jsgen.initCodeGen(gen.script, gen.module, gen.chunk)
-    # let jsSnippet: Rope = jsgen.genScript(jst, node[0].children)
-    # gen.chunk.emit(opcClientBlockEnd)
-    discard
-  else:                                         # expression statement
-    let ty = gen.genExpr(node)
-    if ty != gen.module.sym"void":
-      # if the expression's type is non-void, discard the result.
-      node.error(ErrUseOrDiscard % [node.render, $ty.name])
-      # gen.chunk.emit(opcDiscard)
-      # gen.chunk.emit(1'u8)
+  extendableCase "codeGenStmt":
+    case node.kind:
+    of nkVar, nkLet, nkConst: gen.genVar(node)    # variable declaration
+    of nkBlock: discard gen.genBlock(node, true)  # block statement
+    of nkIf: discard gen.genIf(node, true)        # if statement
+    of nkWhile: gen.genWhile(node)                # while loop
+    of nkFor: gen.genFor(node)                    # for loop
+    of nkBreak: gen.genBreak(node)                # break statement
+    of nkContinue: gen.genContinue(node)          # continue statement
+    of nkReturn: gen.genReturn(node)              # return statement
+    of nkYield: gen.genYield(node)                # yield statement
+    of nkProc: discard gen.genProc(node)          # procedure declaration
+    of nkMacro: discard gen.genMacro(node)        # macro declaration
+    of nkIterator: discard gen.genIterator(node)  # iterator declaration
+    of nkObjectStorage: discard gen.genObjectStorage(node)      # object declaration
+    of nkObject: discard gen.genObject(node)
+    # of nkTypeDef: discard gen.genTypeDef(node)    # type definition
+    # of nkHtmlElement: discard gen.htmlConstr(node) # HTML element construction
+    # of nkJavaScriptSnippet: discard gen.storeJavaScript(node) # JavaScript snippet
+    of nkImport, nkInclude: gen.genImport(node) # import statement
+    of nkDocComment: gen.genComment(node) # generate HTML comment
+    of nkViewLoader: gen.chunk.emit(opcViewLoader)
+    of nkClientBlock:
+      # gen.chunk.emit(opcClientBlock)
+      # var jst = jsgen.initCodeGen(gen.script, gen.module, gen.chunk)
+      # let jsSnippet: Rope = jsgen.genScript(jst, node[0].children)
+      # gen.chunk.emit(opcClientBlockEnd)
+      discard
+    else:                                         # expression statement
+      let ty = gen.genExpr(node)
+      if ty != gen.module.sym"void":
+        # if the expression's type is non-void, discard the result.
+        node.error(ErrUseOrDiscard % [node.render, $ty.name])
+        # gen.chunk.emit(opcDiscard)
+        # gen.chunk.emit(1'u8)
 
 proc genBlock(node: Node, isStmt: bool): Sym {.codegen.} =
   # Generate a block of code. Every block creates a new scope
@@ -2403,10 +2322,10 @@ proc genBlock(node: Node, isStmt: bool): Sym {.codegen.} =
     # if it was a statement, the block's type is void
     result = gen.module.sym"void"
   
-  if node.children.len > 0 == false:
+  # if node.children.len > 0 == false:
     # warn if the block is empty. not sure if this works
     # all the time, but it should warn when node has no 
-    node.warn(WarnEmptyStmt)
+    # node.warn(WarnEmptyStmt)
 
 proc genScript*(program: Ast, includePath: Option[string],
                   emitHalt: static bool = true) {.codegen.} =

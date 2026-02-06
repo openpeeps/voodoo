@@ -199,7 +199,7 @@ type
 
     # TODO: default param values
 
-  TimCompileError* = object of ValueError
+  CodeGenError* = object of ValueError
     file*: string
     ln*, col*: int
 
