@@ -12,6 +12,7 @@ import std/[strutils, tables, critbits, algorithm,
           json, options, hashes, dynlib]
 
 import pkg/libffi
+import pkg/voodoo/extensibles
 
 import ./chunk, ./value
 
@@ -183,58 +184,59 @@ proc parseChunk(currentChunk: Chunk): CachedOps =
     let opByteOffset = cast[int](pc) - base
     let oc = Opcode(pc[0])
     inc(pc)
-    case oc
-    of opcPushNil:
-      let id = readArg[uint16](pc) # object id
-      addOp(oc, id.int64, 0, akInt)
-    of opcPushI:
-      let v = readArg[int](pc)
-      addOp(oc, v.int64, 0, akInt)
-    of opcPushF:
-      let v = readArg[float64](pc)
-      addOp(oc, cast[int64](v), 0, akFloat)
-    of opcPushS:
-      let sid = readArg[uint16](pc)
-      addOp(oc, sid.int64, 0, akString)
-    of opcPushPointer:
-      discard readArg[pointer](pc)
-      addOp(oc)
-    of opcPushTrue, opcPushFalse:
-      addOp(oc)
-    of opcPushG, opcPopG:
-      let sid = readArg[uint16](pc)
-      addOp(oc, sid.int64, 0, akString)
-    of opcPushL, opcPopL:
-      let idx = readArg[uint8](pc).int
-      addOp(oc, idx.int64, 0, akInt)
-    of opcJumpFwd, opcJumpFwdT, opcJumpFwdF, opcJumpBack:
-      let dist = readArg[uint16](pc).int
-      addOp(oc, dist.int64, 0, akInt)
-    of opcCallD:
-      let filePathIdx = readArg[uint16](pc)
-      let pid = readArg[uint16](pc).int
-      addOp(oc, filePathIdx.int64, pid.int64, akString, akInt)
-    of opcAttrClass, opcAttrId, opcBeginHtmlWithAttrs, opcBeginHtml, opcCloseHtml:
-      let sid = readArg[uint16](pc)
-      addOp(oc, sid.int64, 0, akString)
-    of opcConstrArray, opcConstrObj:
-      let cnt = readArg[uint16](pc).int
-      addOp(oc, cnt.int64, 0, akInt)
-    of opcDiscard:
-      let n = readArg[uint8](pc).int
-      addOp(oc, n.int64, 0, akInt)
-    of opcGetF, opcSetF:
-      let f = readArg[uint8](pc).int
-      addOp(oc, f.int64, 0, akInt)
-    of opcFFIGetProc:
-      let sid = readArg[uint16](pc)
-      let argc = readArg[uint8](pc).int
-      addOp(oc, sid.int64, argc.int64, akString, akInt)
-    of opcImportModule:
-      let sid = readArg[uint16](pc)
-      addOp(oc, sid.int64, 0, akString)
-    else:
-      addOp(oc)
+    extendableCase "vmParseChunkCase":
+      case oc
+      of opcPushNil:
+        let id = readArg[uint16](pc) # object id
+        addOp(oc, id.int64, 0, akInt)
+      of opcPushI:
+        let v = readArg[int](pc)
+        addOp(oc, v.int64, 0, akInt)
+      of opcPushF:
+        let v = readArg[float64](pc)
+        addOp(oc, cast[int64](v), 0, akFloat)
+      of opcPushS:
+        let sid = readArg[uint16](pc)
+        addOp(oc, sid.int64, 0, akString)
+      of opcPushPointer:
+        discard readArg[pointer](pc)
+        addOp(oc)
+      of opcPushTrue, opcPushFalse:
+        addOp(oc)
+      of opcPushG, opcPopG:
+        let sid = readArg[uint16](pc)
+        addOp(oc, sid.int64, 0, akString)
+      of opcPushL, opcPopL:
+        let idx = readArg[uint8](pc).int
+        addOp(oc, idx.int64, 0, akInt)
+      of opcJumpFwd, opcJumpFwdT, opcJumpFwdF, opcJumpBack:
+        let dist = readArg[uint16](pc).int
+        addOp(oc, dist.int64, 0, akInt)
+      of opcCallD:
+        let filePathIdx = readArg[uint16](pc)
+        let pid = readArg[uint16](pc).int
+        addOp(oc, filePathIdx.int64, pid.int64, akString, akInt)
+      of opcAttrClass, opcAttrId, opcBeginHtmlWithAttrs, opcBeginHtml, opcCloseHtml:
+        let sid = readArg[uint16](pc)
+        addOp(oc, sid.int64, 0, akString)
+      of opcConstrArray, opcConstrObj:
+        let cnt = readArg[uint16](pc).int
+        addOp(oc, cnt.int64, 0, akInt)
+      of opcDiscard:
+        let n = readArg[uint8](pc).int
+        addOp(oc, n.int64, 0, akInt)
+      of opcGetF, opcSetF:
+        let f = readArg[uint8](pc).int
+        addOp(oc, f.int64, 0, akInt)
+      of opcFFIGetProc:
+        let sid = readArg[uint16](pc)
+        let argc = readArg[uint8](pc).int
+        addOp(oc, sid.int64, argc.int64, akString, akInt)
+      of opcImportModule:
+        let sid = readArg[uint16](pc)
+        addOp(oc, sid.int64, 0, akString)
+      else:
+        addOp(oc)
 
   # Precompute jump targets
   var byteToOp = newSeq[int](codeLen)
@@ -282,11 +284,10 @@ proc parseChunk(currentChunk: Chunk): CachedOps =
 proc getCachedOps(vm: Vm, currentChunk: Chunk): CachedOps =
   # let key = cast[pointer](currentChunk)
   let hashed = hash(currentChunk)
-  # if vm.opCache.contains(hashed):
-  #   # additional debug output for stack operations
-  #   when defined(hayaVmWriteStackOps):
-  #     display(span("cached_ops:", fgGreen), span("chunk=" & $currentChunk))
-  #   return vm.opCache[hashed] # already cached
+  if vm.opCache.contains(hashed):
+    when defined(hayaVmWriteStackOps):
+      display(span("cached_ops:", fgGreen), span("chunk=" & $currentChunk))
+    return vm.opCache[hashed] # already cached
   result = parseChunk(currentChunk)
   vm.opCache[hashed] = result
 
