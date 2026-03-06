@@ -570,7 +570,8 @@ proc popVar(gen: var CodeGen, name: Node) =
 
 proc pushVar(gen: var CodeGen, sym: Sym) =
   ## Push the variable represented by ``sym`` to the top of the stack.
-  # assert sym.kind in skVars, "The symbol must represent a variable. Got " & $sym.kind
+  # assert sym.kind in skVars, "The symbol must represent
+  # a variable. Got " & $sym.kind
   case sym.kind
   of skVars:
     if sym.varLocal:
@@ -607,7 +608,7 @@ proc pushDefault(gen: var CodeGen, ty: Sym) =
   of tyJson:
     gen.chunk.emit(opcPushJNil)
     gen.chunk.emit(uint16(tyJsonStorage))
-  of tyPointer:
+  of TypeKind.tyPointer:
     gen.chunk.emit(opcPushPointer)
     gen.chunk.emit(uint16(tyPointer))
   # of tyNil:
