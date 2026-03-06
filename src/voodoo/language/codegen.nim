@@ -250,7 +250,7 @@ proc newProc*(script: Script, name, impl: Node,
     id = script.procs.len.uint16
     hasReturnType =
       if returnTy.kind == skType:
-        returnTy.tyKind != tyVoid
+        returnTy.tyKind != ttyVoid
       else:
         returnTy.kind == skGenericParam
     theProc =
@@ -314,7 +314,7 @@ proc declareVar*(gen: var CodeGen, name: Node, kind: SymKind, ty: Sym,
   ## magic variables (eg. shadowing ``result``).
 
   # check if the variable's name is not ``result`` when in a non-void proc
-  if not isMagic and gen.kind == gkProc and gen.procReturnTy.tyKind != tyVoid:
+  if not isMagic and gen.kind == gkProc and gen.procReturnTy.tyKind != ttyVoid:
     if name.ident == "result": name.error(ErrShadowResult)
 
   # create the symbol for the variable
@@ -382,7 +382,7 @@ proc instantiate(gen: var CodeGen, sym: Sym, args: seq[Sym],
     of skType:
       # instantiations are only special for object types,
       # if we don't have any generic generic args
-      if not hasGenericGenericArgs and sym.tyKind == tyObject:
+      if not hasGenericGenericArgs and sym.tyKind == ttyObject:
         # result = gen.genObject(sym.impl, isInstantiation = true)
         result = gen.genObjectStorage(sym.impl, isInstantiation = true)
       # anything else creates a copy that makes a given
@@ -591,26 +591,26 @@ proc pushDefault(gen: var CodeGen, ty: Sym) =
   assert ty.kind == skType, "Only types have default values"
   assert ty.tyKind notin tyMeta, "meta-types do not represent a value"
   case ty.tyKind
-  of tyBool:
+  of ttyBool:
     gen.chunk.emit(opcPushFalse)
-  of tyInt:
+  of ttyInt:
     gen.chunk.emit(opcPushI)
     gen.chunk.emit(0'i64)
-  of tyFloat:
+  of ttyFloat:
     gen.chunk.emit(opcPushF)
     gen.chunk.emit(0'f64)
-  of tyString:
+  of ttyString:
     gen.chunk.emit(opcPushS)
     gen.chunk.emit(gen.chunk.getString(""))
-  of tyObject:
+  of ttyObject:
     gen.chunk.emit(opcPushNil)
     gen.chunk.emit(uint16(tyFirstObject + ty.objectId))
-  of tyJson:
+  of ttyJson:
     gen.chunk.emit(opcPushJNil)
     gen.chunk.emit(uint16(tyJsonStorage))
-  of TypeKind.tyPointer:
+  of ttyPointer:
     gen.chunk.emit(opcPushPointer)
-    gen.chunk.emit(uint16(TypeKind.tyPointer))
+    gen.chunk.emit(uint16(ttyPointer))
   # of tyNil:
   #   gen.chunk.emit(opcNoop)
   else: discard  # unreachable
@@ -705,7 +705,7 @@ proc findOverload(sym: Sym, args: seq[Sym],
   # we give a nice error message to the user
   if (errorNode != nil and result == nil) and quiet == false:
     # <T, U, ...>
-    var paramList = args.join(", ")
+    var paramList = args.mapIt($it).join(", ")
     # possible overloads
     var overloadList: string
     let overloads =
@@ -749,13 +749,13 @@ proc splitCall(ast: Node): tuple[callee: Sym, args: seq[Node]] {.codegen.} =
     assert calleeLookup.kind in skVars,
       "Expected a variable, got " & $calleeLookup.kind
     case calleeLookup.varTy.tyKind
-      of tyObject:
+      of ttyObject:
         return (calleeLookup.varTy, @[ast])
-      of TypeKind.tyPointer:
+      of ttyPointer:
         # echo "Pointer dot access not implemented yet"
         # return (calleeLookup.varTy, @[ast])
         discard
-      of tyJson:
+      of ttyJson:
         # if the callee is a json storage we'll emit an error
         # because json fields/items cannot be called using dot notation
         if ast[1].kind == nkCall:
@@ -775,7 +775,7 @@ proc splitCall(ast: Node): tuple[callee: Sym, args: seq[Node]] {.codegen.} =
     let calleeLookup = gen.lookup(ast[0])
     assert calleeLookup.kind in skVars, "Expected a variable, got " & $calleeLookup.kind
     
-    if calleeLookup.varTy.tyKind in {tyArray, tyJson}:
+    if calleeLookup.varTy.tyKind in {ttyArray, ttyJson}:
       callee = newIdent("items") # the built-in items() iterator
       args = @[ast]  # the index is the only argument
     else:
@@ -966,7 +966,7 @@ proc infix(node: Node): Sym {.codegen.} =
           typeSym = gen.genExpr(receiver[0]) # generate the receiver's code
           fieldName = receiver[1].ident
           valTy = gen.genExpr(value) # generate the value's code
-        if typeSym.tyKind == tyObject and fieldName in typeSym.objectFields:
+        if typeSym.tyKind == ttyObject and fieldName in typeSym.objectFields:
           # assign the field if it's valid, using popF
           let field = typeSym.objectFields[fieldName]
           if valTy != field.ty:
@@ -999,8 +999,8 @@ proc infix(node: Node): Sym {.codegen.} =
       gen.chunk.emit(opcDiscard)
       gen.chunk.emit(1'u8)
       let bTy = gen.genExpr(rhs) # generate the right-hand side
-      if aTy.tyKind != tyBool: lhs.error(ErrTypeMismatch % [$aTy, "bool"])
-      if bTy.tyKind != tyBool: rhs.error(ErrTypeMismatch % [$bTy, "bool"])
+      if aTy.tyKind != ttyBool: lhs.error(ErrTypeMismatch % [$aTy, "bool"])
+      if bTy.tyKind != ttyBool: rhs.error(ErrTypeMismatch % [$bTy, "bool"])
       gen.chunk.patchHole(hole)
       result = gen.module.sym"bool"
     of "and": # ``and``
@@ -1015,8 +1015,8 @@ proc infix(node: Node): Sym {.codegen.} =
       gen.chunk.emit(opcDiscard)
       gen.chunk.emit(1'u8)
       let bTy = gen.genExpr(rhs) # generate the right-hand side
-      if aTy.tyKind != tyBool: lhs.error(ErrTypeMismatch % [$aTy, "bool"])
-      if bTy.tyKind != tyBool: rhs.error(ErrTypeMismatch % [$bTy, "bool"])
+      if aTy.tyKind != ttyBool: lhs.error(ErrTypeMismatch % [$aTy, "bool"])
+      if bTy.tyKind != ttyBool: rhs.error(ErrTypeMismatch % [$bTy, "bool"])
       gen.chunk.patchHole(hole)
       result = gen.module.sym"bool"
     of "&":
@@ -1026,9 +1026,9 @@ proc infix(node: Node): Sym {.codegen.} =
         rhs = node[2]
       let aTy = gen.genExpr(lhs) # generate the left-hand side
       let bTy = gen.genExpr(rhs) # generate the right-hand side 
-      if aTy.tyKind != tyString:
+      if aTy.tyKind != ttyString:
         lhs.error(ErrTypeMismatch % [$aTy, "string"])
-      if bTy.tyKind != tyString:
+      if bTy.tyKind != ttyString:
         rhs.error(ErrTypeMismatch % [$bTy, "string"])
       let procSym = gen.lookup(node[0])
       result = gen.callProc(procSym, @[aTy, bTy], errorNode = node)
@@ -1044,7 +1044,7 @@ proc objConstr(node: Node, ty: Sym, constructFromIdent = false): Sym {.codegen.}
     else:
       gen.lookup(node)
 
-  if result.tyKind != tyObject:
+  if result.tyKind != ttyObject:
     node.error(ErrTypeIsNotAnObject % $result.name)
 
   # currently, hayago doesn't allow the user to omit fields
@@ -1166,7 +1166,7 @@ proc genGetField(node: Node): Sym {.codegen.} =
     if recvSym.kind in skVars: recvSym.varTy else: recvSym
 
   # Pointers go through FFI
-  if valTy.tyKind == TypeKind.tyPointer:
+  if valTy.tyKind == ttyPointer:
     if node[1].kind == nkCall:
       for arg in node[1].children[1..^1]:
         discard gen.genExpr(arg)
@@ -1178,11 +1178,11 @@ proc genGetField(node: Node): Sym {.codegen.} =
       node[1].error("Pointer member access must be a call")
 
   # Only objects and JSON can be accessed with dot/bracket
-  if valTy.tyKind notin {tyObject, tyJson}:
+  if valTy.tyKind notin {ttyObject, ttyJson}:
     node[0].error(ErrTypeMismatch % [$valTy.name, "object|json"])
 
   # If it's JSON, dot notation is not supported
-  if valTy.tyKind == tyJson and node[1].kind notin {nkBracket, nkCall}:
+  if valTy.tyKind == ttyJson and node[1].kind notin {nkBracket, nkCall}:
     node[1].error("Use bracket notation to access JSON fields or items")
 
   # Method call on receiver: item.fn(...)
@@ -1205,7 +1205,7 @@ proc genGetField(node: Node): Sym {.codegen.} =
     fieldName = node[1][0].ident
 
   # Direct object field access
-  if valTy.tyKind == tyObject and valTy.objectFields.hasKey(fieldName):
+  if valTy.tyKind == ttyObject and valTy.objectFields.hasKey(fieldName):
     let field = valTy.objectFields[fieldName]
     result = field.ty
     gen.chunk.emit(opcGetF)
@@ -1215,7 +1215,7 @@ proc genGetField(node: Node): Sym {.codegen.} =
     if getter != nil:
       result = gen.callProc(getter, argTypes = @[valTy], errorNode = node)
     else:
-      if valTy.tyKind == tyJson:
+      if valTy.tyKind == ttyJson:
         node[1].error("Use bracket notation to access JSON fields or items")
       else:
         node[1].error(ErrNonExistentField % [fieldName, $valTy])
@@ -1234,14 +1234,14 @@ proc genArrayAccess(node: Node): Sym {.codegen.} =
   if indexTy.kind in skVars: indexTy = indexTy.varTy
 
   case valTy.tyKind
-  of tyJson:
+  of ttyJson:
     # generate the code for accessing a JSON array
-    if indexTy.tyKind notin {tyInt, tyString, tyJson}:
+    if indexTy.tyKind notin {ttyInt, ttyString, ttyJson}:
       node[1].error(ErrTypeMismatch % [$indexTy.name, "int|string|json<int|string>"])
     gen.chunk.emit(opcGetJ)
     result = valTy
-  of tyObject:
-    if indexTy.tyKind != tyString:
+  of ttyObject:
+    if indexTy.tyKind != ttyString:
       node[1].error(ErrTypeMismatch % [$indexTy.name, "string"])
     # Allow bracket access for constant string keys
     if node[1].kind == nkString:
@@ -1256,8 +1256,8 @@ proc genArrayAccess(node: Node): Sym {.codegen.} =
     # dynamic string keys not supported at codegen time yet
     echo "not implemented yet: accessing object fields using dynamic string keys"
     result = valTy
-  of tyArray:
-    if indexTy.tyKind != tyInt:
+  of ttyArray:
+    if indexTy.tyKind != ttyInt:
       node[1].error(ErrTypeMismatch % [$indexTy.name, "int"])
     assert valTy.arrayTy != nil, "Array type must have an element type"
     gen.chunk.emit(opcGetI)
@@ -1289,7 +1289,7 @@ proc genIf(node: Node, isStmt: bool): Sym {.codegen.} =
     let
       cond = branches[i]
       condTy = gen.genExpr(cond)
-    if condTy.tyKind notin {tyBool, tyJson}:
+    if condTy.tyKind notin {ttyBool, ttyJson}:
       cond.error(ErrTypeMismatch % [$condTy.name, "bool"])
 
     # if the condition is false, jump past the branch
@@ -1390,7 +1390,7 @@ proc collectParams(formalParams: Node,
     for name in defs[0..^3]:
       # if sym.kind == skType:
         # case ty.tyKind
-        # of tyArray:
+        # of ttyArray:
           # if ty.arrayTy == nil and defs[^2].kind == nkIndex:
           #   # getting the type of the array using the generic `T`
           #   let identSym: Sym = gen.typeLookup(defs[^2][1].ident)
@@ -1515,7 +1515,7 @@ proc genProc(node: Node, isInstantiation = false): Sym {.codegen.} =
         param.varSet = true  # arguments are not assignable
 
     # declare ``result`` if applicable
-    if returnTy.tyKind != tyVoid:
+    if returnTy.tyKind != ttyVoid:
       let res = newIdent("result")
       procGen.declareVar(res, skVar, returnTy, isMagic = true)
       procGen.pushDefault(returnTy)
@@ -1530,7 +1530,7 @@ proc genProc(node: Node, isInstantiation = false): Sym {.codegen.} =
     discard procGen.genBlock(body, isStmt = true)
 
     # finally, return ``result`` if applicable
-    if returnTy.tyKind != tyVoid:
+    if returnTy.tyKind != ttyVoid:
       let resultSym = procGen.lookup(newIdent("result"))
       procGen.chunk.emit(opcPushL)
       procGen.chunk.emit(resultSym.varStackPos.uint8)
@@ -1632,7 +1632,7 @@ proc genMacro(node: Node, isInstantiation = false): Sym {.codegen.} =
     # procGen.chunk.emit(opcLoadDeferred)
 
     # finally, return ``result`` if applicable
-    if returnTy.tyKind != tyVoid:
+    if returnTy.tyKind != ttyVoid:
       let resultSym = procGen.lookup(newIdent("result"))
       procGen.chunk.emit(opcPushL)
       procGen.chunk.emit(resultSym.varStackPos.uint8)
@@ -1663,7 +1663,7 @@ proc genExpr(node: Node, varUnwrap = true): Sym {.codegen.} =
     case symNode.kind:
       of skType:
         case symNode.tyKind
-          of tyObject:
+          of ttyObject:
             # object construction from type identifier
             return gen.objConstr(node, symNode, constructFromIdent = true)
           else: discard
@@ -1734,7 +1734,7 @@ proc genWhile(node: Node) {.codegen.} =
   if not isWhileTrue:
     # if it's not a while true loop, execute the condition
     let condTy = gen.genExpr(node[0])
-    if condTy.tyKind != tyBool:
+    if condTy.tyKind != ttyBool:
       node[0].error(ErrTypeMismatch % [$condTy.name, "bool"])
 
     # if it's false, jump over the loop's body
@@ -1820,14 +1820,14 @@ proc genFor(node: Node) {.codegen.} =
 
   # If the iterator's yield type is an "empty object", try to adopt the
   # element shape from the first argument when it's an array of objects.
-  if theIter.iterYieldTy.tyKind == tyObject and theIter.iterYieldTy.objectFields.len == 0:
+  if theIter.iterYieldTy.tyKind == ttyObject and theIter.iterYieldTy.objectFields.len == 0:
     if argTypes.len > 0:
       var src = argTypes[0]
       if src.kind in skVars: src = src.varTy
       let srcTy = unwrapType(src)
-      if srcTy.tyKind == tyArray and srcTy.arrayTy != nil:
+      if srcTy.tyKind == ttyArray and srcTy.arrayTy != nil:
         let elem = unwrapType(srcTy.arrayTy)
-        if elem.tyKind == tyObject and elem.objectFields.len > 0:
+        if elem.tyKind == ttyObject and elem.objectFields.len > 0:
           theIter.iterYieldTy = elem
 
   iterGen.iter = theIter
@@ -1874,7 +1874,7 @@ proc genReturn(node: Node) {.codegen.} =
   # value specified, we return the magic 'result' variable
   # this is exactly why shadowing 'result' is prohibited
   if node[0].kind == nkEmpty:
-    if gen.procReturnTy.tyKind != tyVoid:
+    if gen.procReturnTy.tyKind != ttyVoid:
       let resultSym = gen.lookup(newIdent("result"))
       gen.chunk.emit(opcPushL)
       gen.chunk.emit(resultSym.varStackPos.uint16)
@@ -1886,7 +1886,7 @@ proc genReturn(node: Node) {.codegen.} =
 
   # hayago uses two different opcodes for
   # void and non-void return, so we handle that
-  if gen.procReturnTy.tyKind != tyVoid:
+  if gen.procReturnTy.tyKind != ttyVoid:
     gen.chunk.emit(opcReturnVal)
   else:
     gen.chunk.emit(opcReturnVoid)
@@ -1962,7 +1962,7 @@ proc genArray(node: Node, isInstantiation = false): Sym {.codegen.} =
 proc genObjectStorage(node: Node, isInstantiation = false): Sym {.codegen.} =
   # Generate code for an object storage. This creates an anonymous object type
   # with the given fields, and emits code to construct it.
-  result = newType(tyObject, name = nil, impl = node)
+  result = newType(ttyObject, name = nil, impl = node)
   for n in node.children:
     let key =
       if n[0].kind == nkIdent: n[0].ident
@@ -1990,7 +1990,7 @@ proc genObject(node: Node, isInstantiation = false): Sym {.codegen.} =
   # Process an object declaration, and add the new type into the current
   # module or scope.
   # create a new type for the object
-  result = newType(tyObject, name = node[0], impl = node)
+  result = newType(ttyObject, name = node[0], impl = node)
   result.impl = node
 
   # check if the object is generic
@@ -2056,7 +2056,7 @@ proc genIterator(node: Node, isInstantiation = false): Sym {.codegen.} =
     node.error(ErrIterMustHaveYieldType)
 
   let yieldTy = gen.lookup(formalParams[0])
-  if yieldTy.kind == skType and yieldTy.tyKind == tyVoid:
+  if yieldTy.kind == skType and yieldTy.tyKind == ttyVoid:
     node.error(ErrIterMustHaveYieldType)
 
   # fill in the iterator

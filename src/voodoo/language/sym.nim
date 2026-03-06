@@ -62,27 +62,27 @@ type
   TypeKind* = enum
     ## The kind of a type.
     # meta-types
-    tyVoid = "void"      # matches no types
-    tyAny = "any"        # matches any and all types
+    ttyVoid = "void"      # matches no types
+    ttyAny = "any"        # matches any and all types
 
     # concrete types
-    tyBool = "bool"
-    tyInt = "int"        # int64
-    tyFloat = "float"    # float64
-    tyString = "string"  # ref string
-    tyPointer = "pointer" # a raw pointer type
-    tyJson = "json"
-    tyArray = "array"
+    ttyBool = "bool"
+    ttyInt = "int"        # int64
+    ttyFloat = "float"    # float64
+    ttyString = "string"  # ref string
+    ttyPointer = "pointer" # a raw pointer type
+    ttyJson = "json"
+    ttyArray = "array"
     
-    tyNil = "nil"        # matches nil
+    ttyNil = "nil"        # matches nil
 
     # user-defined types
-    tyObject = "object"
-    tyAlias = "alias"
-    tyCustom = "custom"
+    ttyObject = "object"
+    ttyAlias = "alias"
+    ttyCustom = "custom"
       # a user-defined type that doesn't have a
       # special representation in the VM
-    tyHtmlElement = "HtmlElement"
+    ttyHtmlElement = "HtmlElement"
 
   ProcType* = enum
     ## The type of a procedure (function)
@@ -108,31 +108,31 @@ type
         ## This is used to determine whether the type
         ## can be used in other modules or not.
       case tyKind*: TypeKind
-      of tyNil: discard # nil is a special case
-      of tyVoid..tyString:
+      of ttyNil: discard # nil is a special case
+      of ttyVoid..ttyString:
         isMutable*: bool
-      of tyJson:
+      of ttyJson:
         jsonTy*: JsonNodeKind
           ## the type of the JSON value, used for type checking
         jsonNode*: JsonNode
           ## a statically defined JSON node (when available)
-      of tyArray:
+      of ttyArray:
         arrayTy*: Sym
           ## the type of the array
         arrayMutable*: bool
           ## used to determine whether the array is mutable or not
         arrayItems*: seq[Sym]
           ## the items of the array
-      of tyObject:
+      of ttyObject:
         objectId*: TypeId
         objectFields*: Table[string, ObjectField]
-      of tyAlias:
+      of ttyAlias:
         aliasId*: TypeId
         aliasTy*: Sym
-      of tyCustom:
+      of ttyCustom:
         discard # todo
-      of tyHtmlElement: discard
-      of tyPointer:
+      of ttyHtmlElement: discard
+      of ttyPointer:
         pointerTarget*: Sym
           ## The type this pointer points to (type info only)
     of skHtmlType:
@@ -209,8 +209,8 @@ const
   skDecl* = {skType} + skCallable + skVars
   skTyped* = {skType, skHtmlType, skGenericParam}
 
-  tyPrimitives* = {tyVoid..tyString}
-  tyMeta* = {tyVoid, tyAny}
+  tyPrimitives* = {ttyVoid..ttyString}
+  tyMeta* = {ttyVoid, ttyAny}
 
 proc `==`*(a, b: Context): bool {.borrow.}
 
@@ -269,7 +269,7 @@ proc `$`*(sym: Sym): string =
     result.add($sym.varTy)
   of skType:
     case sym.tykind
-    of tyArray:
+    of ttyArray:
       # assert sym.arrayTy != nil, "array type must have a type"
       result = "array["
       if sym.arrayTy != nil:
@@ -278,7 +278,7 @@ proc `$`*(sym: Sym): string =
         if sym.genericInstArgs.isSome:
           result.add(sym.genericInstArgs.get()[0].name.render)
       result.add("]")
-    of tyObject:
+    of ttyObject:
       result = "{"
       for name, field in sym.objectFields:
         result.add(" " & name & ": (...);")
@@ -312,7 +312,7 @@ proc `$`*(sym: Sym): string =
     result.add($sym.params)
     case sym.returnTy.kind
     of skType:
-      if sym.returnTy.tyKind != tyVoid:
+      if sym.returnTy.tyKind != ttyVoid:
         result.add(": ")
         result.add($sym.returnTy)
     of skGenericParam:
@@ -337,18 +337,18 @@ proc `$`*(sym: Sym): string =
 #     result.add(" = ")
 #     case sym.tyKind
 #     of tyPrimitives: result.add($sym.tyKind)
-#     of tyObject:
+#     of ttyObject:
 #       result.add("object {")
 #       for name, field in sym.objectFields:
 #         result.add(" " & name & ": " & $field.ty.name & ";")
 #       result.add(" }")
-#     of tyAlias:
+#     of ttyAlias:
 #       discard # todo
-#     of tyCustom:
+#     of ttyCustom:
 #       discard # todo
-#     of tyJson:
+#     of ttyJson:
 #       discard
-#     of tyHtmlElement: discard # todo
+#     of ttyHtmlElement: discard # todo
 #   of skProc:
 #     result = "proc " & $sym.name & "{" & $sym.procId & "}" & $sym.procParams
 #   of skIterator:
@@ -432,14 +432,14 @@ proc sameType*(a, b: Sym): bool =
   if b.kind == skGenericParam: b = b.constraint
 
   # Special case: 'any' matches anything
-  if a.kind == skType and a.tyKind == tyAny: return true
-  if b.kind == skType and b.tyKind == tyAny: return true
+  if a.kind == skType and a.tyKind == ttyAny: return true
+  if b.kind == skType and b.tyKind == ttyAny: return true
 
   # If both are types, compare their kind and details
   if a.kind == skType and b.kind == skType:
     if a.tyKind == b.tyKind:
       case a.tyKind
-      of tyArray:
+      of ttyArray:
         # Compare array item types
         if a.arrayTy != nil and b.arrayTy != nil:
           return a.arrayTy.sameType(b.arrayTy)
@@ -452,7 +452,7 @@ proc sameType*(a, b: Sym): bool =
             if not aArgs[i].sameType(bArgs[i]): return false
           return true
         return true # return a == b
-      of tyObject:
+      of ttyObject:
         # Compare object type ids (structural comparison could be added)
         return a.objectId == b.objectId
       else:
@@ -676,14 +676,14 @@ proc initSystemTypes*(module: Module) =
   let genT = ast.newIdent("T")
   let genArrayType = newSym(skGenericParam, genT, impl = genT)
   genArrayType.constraint = module.sym"any"
-  module.add(genType(tyArray, "array", true, some(@[genArrayType])))
+  module.add(genType(ttyArray, "array", true, some(@[genArrayType])))
 
-  module.add(genType(tyNil, "nil", true))
-  module.add(genType(tyAny, "stmt", true))
-  module.add(genType(tyJson, "json", true))
-  module.add(genType(tyObject, "object", true))
-  # module.add(genType(tyObject, "tuple", true))
-  module.add(genType(tyPointer, "pointer", true))
+  module.add(genType(ttyNil, "nil", true))
+  module.add(genType(ttyAny, "stmt", true))
+  module.add(genType(ttyJson, "json", true))
+  module.add(genType(ttyObject, "object", true))
+  # module.add(genType(ttyObject, "tuple", true))
+  module.add(genType(ttyPointer, "pointer", true))
 
 proc getModuleName*(module: Module): string =
   ## Get the module name for the JS export

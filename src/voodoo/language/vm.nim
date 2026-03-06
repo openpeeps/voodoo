@@ -75,12 +75,16 @@ proc `{}`[T](x: seq[T], i: BackwardsIndex): ptr UncheckedArray[T] =
 proc read[T](code: ptr UncheckedArray[uint8], offset: int): T =
   result = cast[ptr T](code[offset].unsafeAddr)[]
 
+# proc push(stack: var Stack, val: Value) =
+#   if stack.len < stack.capacity:
+#     stack.setLen(stack.len + 1)
+#     stack[stack.len - 1] = val
+#   else:
+#     stack.add(val)
 proc push(stack: var Stack, val: Value) =
-  if stack.len < stack.capacity:
-    stack.setLen(stack.len + 1)
-    stack[stack.len - 1] = val
-  else:
-    stack.add(val)
+  let i = stack.len
+  stack.setLen(i + 1)
+  stack[i] = val
   
   # additional debug output for stack operations
   when defined(hayaVmWriteStackOps):
