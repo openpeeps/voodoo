@@ -14,7 +14,7 @@ import std/[hashes, strutils, json, sequtils, options]
 import pkg/voodoo/extensibles
 import pkg/voodoo/parsers/voojson
 
-from pkg/htmlparser
+import pkg/htmlparser
 export htmlparser
 
 type
