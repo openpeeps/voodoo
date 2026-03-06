@@ -610,7 +610,7 @@ proc pushDefault(gen: var CodeGen, ty: Sym) =
     gen.chunk.emit(uint16(tyJsonStorage))
   of TypeKind.tyPointer:
     gen.chunk.emit(opcPushPointer)
-    gen.chunk.emit(uint16(tyPointer))
+    gen.chunk.emit(uint16(TypeKind.tyPointer))
   # of tyNil:
   #   gen.chunk.emit(opcNoop)
   else: discard  # unreachable
@@ -751,7 +751,7 @@ proc splitCall(ast: Node): tuple[callee: Sym, args: seq[Node]] {.codegen.} =
     case calleeLookup.varTy.tyKind
       of tyObject:
         return (calleeLookup.varTy, @[ast])
-      of tyPointer:
+      of TypeKind.tyPointer:
         # echo "Pointer dot access not implemented yet"
         # return (calleeLookup.varTy, @[ast])
         discard
@@ -1166,7 +1166,7 @@ proc genGetField(node: Node): Sym {.codegen.} =
     if recvSym.kind in skVars: recvSym.varTy else: recvSym
 
   # Pointers go through FFI
-  if valTy.tyKind == tyPointer:
+  if valTy.tyKind == TypeKind.tyPointer:
     if node[1].kind == nkCall:
       for arg in node[1].children[1..^1]:
         discard gen.genExpr(arg)

@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version       = "0.1.1"
 author        = "George Lemon"
 description   = "Working with Nim's macros is just Voodoo"
 license       = "MIT"
