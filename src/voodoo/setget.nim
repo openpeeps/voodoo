@@ -81,7 +81,10 @@ proc walkField(f: NimNode, id: NimNode) {.compileTime.} =
       newProc(
         nnkPostfix.newTree(ident("*"), procName),
         params = [
-          returnType,
+          nnkCommand.newTree(
+            ident"lent",
+            returnType
+          ),
           nnkIdentDefs.newTree(
             paramIdent,
             id,
