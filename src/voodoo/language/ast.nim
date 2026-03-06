@@ -14,9 +14,8 @@ import std/[hashes, strutils, json, sequtils, options]
 import pkg/voodoo/extensibles
 import pkg/voodoo/parsers/voojson
 
-
-from pkg/htmlparser import tagToStr, htmlTag, HtmlTag
-export htmlTag, tagToStr, HtmlTag
+from pkg/htmlparser
+export htmlparser
 
 type
   NodeKind* {.extensible.} = enum
