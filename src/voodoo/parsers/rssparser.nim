@@ -13,69 +13,69 @@ import std/[xmltree, xmlparser, strutils, httpclient, options]
 type
   RssImage* = object
     ## Represents the image associated with an RSS feed.
-    url: string
+    url*: string
       # The URL of the image, if available.
-    title: string
+    title*: string
       # The title of the image, if available.
-    link: string
+    link*: string
       # The URL that the image links to, if available.
 
   RssMediaContent* = object
     ## Represents media content associated with an RSS item.
-    url: Option[string]
+    url*: Option[string]
       # The URL of the media content, if available.
-    mediaType: Option[string]
+    mediaType*: Option[string]
       # The type of media (e.g., "image/jpeg", "video/mp4"), if available.
-    medium: Option[string]
+    medium*: Option[string]
       # The medium of the media content (e.g., "image", "video"), if available.
-    height: Option[int]
+    height*: Option[int]
       # The height of the media content in pixels, if available.
-    width: Option[int]
+    width*: Option[int]
       # The width of the media content in pixels, if available.
 
   RssItem* = object
     ## Represents an individual item in an RSS feed.
-    title: Option[string]
+    title*: Option[string]
       # The title of the item, if available.
-    link: Option[string]
+    link*: Option[string]
       # The URL of the item, if available.
-    description: Option[string]
+    description*: Option[string]
       # A brief description of the item, if available.
-    pubDate: Option[string]
+    pubDate*: Option[string]
       # The date and time when the item was published.
       # TODO - parse this into a DateTime object
-    category: Option[string]
+    category*: Option[string]
       # The category of the item, if available.
-    guid: Option[string]
+    guid*: Option[string]
       # A unique identifier for the item, if available.
-    source: Option[string]
+    source*: Option[string]
       # The source of the item, if available.
-    mediaContent: Option[RssMediaContent]
+    mediaContent*: Option[RssMediaContent]
       # The media content associated with the item, if any.
 
   RssFeed* = object
     ## Represents an RSS feed with its metadata and items.
-    title: string
+    title*: string
       # The title of the feed, if available.
-    link: string
+    link*: string
       # The URL of the feed, if available.
-    description: string
+    description*: string
       # A brief description of the feed, if available.
     language: string
       # The language of the feed, if available.
-    copyright: string
+    copyright*: string
       # The copyright information for the feed, if available.
-    pubDate: string
+    pubDate*: string
       # The date and time when the feed was last updated.
-    lastBuildDate: string
+    lastBuildDate*: string
       # The date and time when the feed was last built.
     atomSelfLink*: Option[string]
       # The URL of the feed itself, if available (from Atom self link).
-    image: RssImage
+    image*: RssImage
       # The image associated with the feed, if any.
-    items: seq[RssItem]
+    items*: seq[RssItem]
       # A sequence of items contained in the feed.
-    ttl: int
+    ttl*: int
       # The time to live (TTL) for the feed, in minutes.
 
   RSSParsingError* = object of CatchableError
