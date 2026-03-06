@@ -1,0 +1,16 @@
+nimTitle	extensibles	voodoo/extensibles.html	module voodoo/extensibles		0
+nim	Extendables	voodoo/extensibles.html#Extendables	const Extendables		11
+nim	ExtendableEnums	voodoo/extensibles.html#ExtendableEnums	const ExtendableEnums		12
+nim	ExtendableProcs	voodoo/extensibles.html#ExtendableProcs	const ExtendableProcs		13
+nim	ExtendableModules	voodoo/extensibles.html#ExtendableModules	const ExtendableModules		14
+nim	ExtendableCases	voodoo/extensibles.html#ExtendableCases	const ExtendableCases		15
+nim	extendEnum	voodoo/extensibles.html#extendEnum.m,untyped,untyped	macro extendEnum(x: untyped; fields: untyped)		17
+nim	extendModule	voodoo/extensibles.html#extendModule.m,staticstring,untyped	macro extendModule(modulePath: static string; x: untyped)		36
+nim	extendCaseStmt	voodoo/extensibles.html#extendCaseStmt.m,staticstring,untyped	macro extendCaseStmt(id: static string; caseStmt: untyped)		55
+nim	extendCase	voodoo/extensibles.html#extendCase.m,untyped	macro extendCase(struct: untyped)		61
+nim	extendCase2	voodoo/extensibles.html#extendCase2.t,untyped,untyped	template extendCase2(fieldNode: untyped; branchesNode: untyped)		83
+nim	extensibleCase	voodoo/extensibles.html#extensibleCase.t	template extensibleCase()		124
+nim	extensible	voodoo/extensibles.html#extensible.m,untyped	macro extensible(x: untyped)		126
+nim	extendableCase	voodoo/extensibles.html#extendableCase.t,staticstring,untyped	template extendableCase(caseId: static string; caseStmtNode: untyped)		169
+nim	injectHandles	voodoo/extensibles.html#injectHandles.t	template injectHandles()		186
+nim	injectExtendedModule	voodoo/extensibles.html#injectExtendedModule.t	template injectExtendedModule()		198

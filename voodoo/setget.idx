@@ -1,0 +1,11 @@
+nimTitle	setget	voodoo/setget.html	module voodoo/setget		0
+nim	setters	voodoo/setget.html#setters.m,untyped	macro setters(obj: untyped)		35
+nim	setters	voodoo/setget.html#setters.m,untyped,untyped	macro setters(excludes: untyped; obj: untyped)		39
+nim	expandSetters	voodoo/setget.html#expandSetters.m	macro expandSetters()		46
+nim	getters	voodoo/setget.html#getters.m,untyped	macro getters(obj: untyped)		97
+nim	getters	voodoo/setget.html#getters.m,untyped,untyped	macro getters(excludes: untyped; obj: untyped)		123
+nim	expandGetters	voodoo/setget.html#expandGetters.m	macro expandGetters()		129
+nim	expandGetters	voodoo/setget.html#expandGetters.m,staticproc(string)	macro expandGetters(identRenameCallback: static proc (x: string): string)		136
+nimgrp	expandgetters	voodoo/setget.html#expandGetters-macros-all	macro		129
+nimgrp	setters	voodoo/setget.html#setters-macros-all	macro		35
+nimgrp	getters	voodoo/setget.html#getters-macros-all	macro		97
