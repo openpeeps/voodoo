@@ -11,11 +11,9 @@
 import std/[hashes, strutils, json, sequtils, options]
 
 # import pkg/jsony
-import pkg/voodoo/extensibles
-import pkg/voodoo/parsers/voojson
-
-import pkg/htmlparser
-export htmlparser
+import ../../extensibles
+import ../parsers/voojson
+import ../parsers/htmlparser
 
 type
   NodeKind* {.extensible.} = enum
