@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.2"
+version       = "0.1.3"
 author        = "George Lemon"
 description   = "Working with Nim's macros is just Voodoo"
 license       = "MIT"
@@ -11,6 +11,7 @@ srcDir        = "src"
 
 requires "nim >= 2.0.0"
 requires "libffi"
+requires "htmlparser#head"
 
 
 task oop, "test oop":
