@@ -286,7 +286,8 @@ proc `$`*(sym: Sym): string =
     else:
       result = sym.name.render
       if sym.genericInstArgs.isSome:
-        result.add('[' & sym.genericInstArgs.get.join(", ") & ']')
+        let argsStr = sym.genericInstArgs.get.mapIt($it).join(", ")
+        result.add('[' & argsStr & ']')
   of skGenericParam:
     result = sym.name.render
     if sym.constraint != nil:
@@ -306,7 +307,8 @@ proc `$`*(sym: Sym): string =
       #   sym.genericParams.get(otherwise = sym.genericInstArgs.get)
       # result.add('[' & genericParams.join(", ") & ']')
       let genericParams = sym.genericParams.get()
-      result.add('[' & genericParams.join(", ") & ']')
+      let paramsStr = genericParams.mapIt($it).join(", ")
+      result.add('[' & paramsStr & ']')
     result.add($sym.params)
     case sym.returnTy.kind
     of skType:
@@ -318,7 +320,7 @@ proc `$`*(sym: Sym): string =
       result.add($sym.returnTy.name)
     else: discard # error?
   of skChoice:
-    result = sym.choices.join("\n").indent(2)
+    result = sym.choices.mapIt($it).join("\n").indent(2)
   else: discard
 
 # proc `$$`*(sym: Sym): string =
