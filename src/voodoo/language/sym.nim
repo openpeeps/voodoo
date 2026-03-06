@@ -401,13 +401,14 @@ proc genType*(kind: TypeKind, name: string, exportSym: bool,
   if genericParams.isSome:
     result.genericParams = genericParams
 
-proc genHtmlType*(kind: TypeKind, tag: HtmlTag): Sym =
-  ## Generate a new type symbol from a string name
-  result = Sym(
-    name: newIdent($tag),
-    kind: skHtmlType,
-    isVoidElement: tag in voidHtmlElements
-  )
+when compiles(voidHtmlElements.len > 0):
+  proc genHtmlType*(kind: TypeKind, tag: HtmlTag): Sym =
+    ## Generate a new type symbol from a string name
+    result = Sym(
+      name: newIdent($tag),
+      kind: skHtmlType,
+      isVoidElement: tag in voidHtmlElements
+    )
 
 proc unwrapType*(ty: Sym): Sym =
   ## Unwraps a type from any `skVar` or `skLet` wrappers.

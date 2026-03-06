@@ -233,8 +233,8 @@ proc render*(node: Node): string =
   of nkEmpty: result = ""
   of nkNil: result = "nil"
   # of nkHtmlAttribute: result = ""
-  of nkJavaScriptSnippet:
-    discard
+  # of nkJavaScriptSnippet:
+    # discard
     # result = node.snippetCode
     # if node.snippetCodeAttrs.len > 0:
     #   result.add(" " & node.snippetCodeAttrs.mapIt($1 & "=" & $2.render).join(", "))
