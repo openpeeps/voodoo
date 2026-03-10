@@ -488,12 +488,22 @@ proc typeLookup(gen: var CodeGen, id: string): Sym =
   if result == nil and id in gen.module.typeDefs:
     return gen.module.typeDefs[id]
 
+proc unwrapBaseIdent(n: Node): Node =
+  # Extract left-most identifier from nested bracket/dot expressions
+  var cur = n
+  while cur != nil:
+    case cur.kind
+    of nkIdent:
+      return cur
+    of nkBracket, nkDot:
+      if cur.len == 0: return nil
+      cur = cur[0]
+    else:
+      return nil
+
 proc lookup(gen: var CodeGen, symName: Node, quiet = false): Sym =
-  ## Look up the symbol with the given ``name``.
-  ## If ``quiet`` is true, an error will not be
-  ## raised on undefined reference.
-  
-  # find out the symbol's name
+  # Look up the symbol with the given ``name``. If ``quiet`` is true,
+  # an error will not be raised on undefined reference
   var name: Node
   case symName.kind
   of nkIdent:
@@ -508,13 +518,13 @@ proc lookup(gen: var CodeGen, symName: Node, quiet = false): Sym =
       return gen.lookup(symName[0], quiet)  # generic instantiation
     name = symName[0]  # generic instantiation
   of nkBracket:
-    name = symName[0]  # array type
+    name = unwrapBaseIdent(symName)
   else: discard
   
   if name == nil or name.kind != nkIdent:
     # invalid symbol name
     symName.error(ErrInvalidSymName % symName.render)
-  
+
   let id = 
     if name.ident.len > 1:
       name.ident[0] & name.ident[1..^1].toLowerAscii()
@@ -777,7 +787,7 @@ proc splitCall(ast: Node): tuple[callee: Sym, args: seq[Node]] {.codegen.} =
     
     if calleeLookup.varTy.tyKind in {ttyArray, ttyJson}:
       callee = newIdent("items") # the built-in items() iterator
-      args = @[ast]  # the index is the only argument
+      args = @[ast]
     else:
       callee = ast[0]
       args = @[ast[1]]  # the index is the only argument
