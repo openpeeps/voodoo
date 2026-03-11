@@ -12,7 +12,8 @@ import std/[hashes, strutils, json, sequtils, options]
 
 # import pkg/jsony
 import ../extensibles
-import ../parsers/voojson
+# import ../parsers/
+import pkg/jsony
 import ../parsers/htmlpar
 export htmlpar
 
@@ -124,7 +125,11 @@ type
 
   Ast* {.acyclic.} = ref object
     sourcePath*: string
+      ## The source path of the AST (e.g., the file path of the template)
+    otherPaths*: seq[string]
+      ## Other paths that this AST is associated with (imported/included templates)
     nodes*: seq[Node]
+      ## The top-level nodes of the AST
 
 const LeafNodes = {nkEmpty..nkIdent}
 

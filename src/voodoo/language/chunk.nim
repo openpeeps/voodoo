@@ -168,17 +168,6 @@ proc addLineInfo*(chunk: var Chunk, n: int) =
       return
   chunk.lineInfo.add((chunk.file, chunk.ln, chunk.col, n))
 
-# proc getString*(chunk: var Chunk, str: string): uint16 =
-#   ## Get a string ID from a chunk, adding it to the chunk's string list if it
-#   ## isn't already stored.
-#   # TODO: this is an `O(n)` operation, depending on the number of strings
-#   # already stored in the chunk. optimize this
-#   if str notin chunk.strings:
-#     result = chunk.strings.len.uint16
-#     chunk.strings.add(str)
-#   else:
-#     result = chunk.strings.find(str).uint16
-
 const MaxIds = int(high(uint16)) + 1
 proc getString*(chunk: var Chunk, str: sink string): uint16 =
   ## O(1) string interning with a hash index; returns existing id or inserts.
@@ -287,6 +276,26 @@ proc getLineInfo*(chunk: Chunk, i: int): LineInfo =
     for r in 1..li.runLength:
       if n == i: return li
       inc(n)
+
+proc getLineInfoTable*(chunk: Chunk): seq[LineInfo] =
+  ## Get the line info table for this chunk,
+  ## expanding the run-length encoding.
+  chunk.lineInfo
+
+proc setLineInfoTable*(chunk: var Chunk, info: seq[LineInfo]) =
+  ## Set the line info table for this chunk,
+  ## compressing it with run-length encoding.
+  chunk.lineInfo = info
+
+proc rebuildStringIds*(chunk: var Chunk) =
+  ## Rebuild the string ID table from the strings sequence.
+  ## This is necessary after deserializing a chunk, because the string IDs are not
+  ## stored in the serialized form of the chunk.
+  chunk.stringIds.clear()
+  for i, s in chunk.strings:
+    if i > int(high(uint16)):
+      raise newException(RangeDefect, "chunk string table overflow while rebuilding")
+    chunk.stringIds[s] = uint16(i)
 
 proc newChunk*(file: string): Chunk =
   ## Create a new chunk.

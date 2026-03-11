@@ -326,6 +326,32 @@ template pushConst(co: CachedOps, i: int, currentChunk: Chunk, stack: var Stack)
   when defined(hayaVmWriteStackOps):
     echo "PushConst: opcode=", oc, " value=", stack[^1]
 
+proc prewarmScriptOpsRec(vm: Vm, s: Script, seen: var Table[Hash, bool]) =
+  # Recursively prewarm cached ops for all chunks
+  # in the script and its imports.
+  if s.isNil: return
+  let h = hash(s)
+  if seen.hasKey(h): return # already prewarmed this script (handles cycles in imports)
+  seen[h] = true
+
+  if not s.mainChunk.isNil:
+    discard vm.getCachedOps(s.mainChunk)
+
+  for p in s.procs:
+    if p.kind == pkNative and not p.chunk.isNil:
+      discard vm.getCachedOps(p.chunk)
+
+  for modPath, modScript in s.scripts:
+    vm.importedModules[modPath] = modScript
+    vm.prewarmScriptOpsRec(modScript, seen)
+
+proc prewarmScriptOps*(vm: Vm, s: Script) =
+  ## Call this once after loading from persistent cache
+  ## (or after compile) to prewarm the VM's opcode cache
+  ## with all chunks in the script and its imports
+  var seen = initTable[Hash, bool]()
+  vm.prewarmScriptOpsRec(s, seen)
+
 proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
         staticString: Option[string] = none(string),
         localData = newJObject()): string =
@@ -337,17 +363,21 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
     callStack: seq[CallFrame] # todo preallocate
       # call stack for managing imports / function calls
     script = script
+      # current script (used for error reporting and imports)
     currentChunk  = startChunk
-
+      # current chunk being executed; starts as the entry chunk but
+      # can change with imports and calls
     cached = vm.getCachedOps(currentChunk)
-    co = cached           # alias
-    opcodes = co.opcodes
-
+    co = cached
+      # current cached ops; this is updated whenever currentChunk changes,
+      # so we don't have to keep looking it up in the VM cache
+    opcodes = co.opcodes  # current opcodes for convenience
     pcIdx  = 0            # program counter (index into ops)
     stackBottom = 0       # index of first local variable in stack
     frameChanged = false  # true if we switched frames
 
   # Inject localData as $this in globals
+  # this is Tim-specific. TODO - move to Tim integration layer
   vm.globals["this"] = initValue(localData)
 
   template unary(expr) =
@@ -785,20 +815,12 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
     of opcJumpBack:
       let tgt = co.jumpTargets[pcIdx]
       if tgt >= 0: pcIdx = tgt - 1
-    
     of opcCallD:
       # The `opcCallD` calls a procedure defined
       # in the current or another chunk.
       let chunkPath = co.getArg1Str(pcIdx, currentChunk)
       let procId = co.arg2[pcIdx].int
-      
-      # get the target procedure
-      # let targetScript =
-      #   if chunkPath == currentChunk.file: script
-      #   else: script.scripts[chunkPath]
-      
       # Resolve initial target script by path or current
-      # echo chunkPath
       var targetScript =
         if chunkPath == currentChunk.file: script
         else:
@@ -827,7 +849,6 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
         # debug output for calls
         display(span("opc:", fgGreen), span("<" & $opcCallD & ">"),
           span("filePath=" & chunkPath & " procId=" & $procId & " name=" & p.name & " paramCount=" & $p.paramCount)) 
-      
       # switch to the called procedure's chunk          
       case p.kind
       of pkNative:
@@ -843,109 +864,13 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
           else:
             p.foreign(nil)
         restoreFrame() # after foreign call
-        
         if p.hasResult:
           stack.push(callResult)
-
         when defined(hayaVmWriteStackOps):
           if callResult != nil:
             echo "Foreign call result: ", callResult
           else:
             echo "Foreign call result: nil"
-
-    # of opcCallD:
-    #   # The `opcCallD` calls a procedure defined
-    #   # in the current or another chunk.
-    #   let chunkPath = co.getArg1Str(pcIdx, currentChunk)
-    #   let procId = co.arg2[pcIdx].int
-
-    #   # Resolve initial target script by path or current
-    #   var targetScript =
-    #     if chunkPath == currentChunk.file: script
-    #     else:
-    #       if chunkPath in script.scripts:
-    #         script.scripts[chunkPath]
-    #       else:
-    #         # fallback to vm.importedModules if present
-    #         if chunkPath in vm.importedModules:
-    #           vm.importedModules[chunkPath]
-    #         else:
-    #           raise newException(ValueError,
-    #             "opcCallD: target module not found: " & chunkPath)
-
-    #   # If procId is out-of-bounds for resolved script, try imported modules heuristically.
-    #   if procId < 0 or procId >= targetScript.procs.len:
-    #     var redirected = false
-    #     # Prefer the explicitly imported module by the last import if any
-    #     # or search all known imported scripts for one that has this proc index.
-    #     for _, imported in script.scripts:
-    #       if procId >= 0 and procId < imported.procs.len:
-    #         targetScript = imported
-    #         redirected = true
-    #         when defined(hayaVmWriteStackOps):
-    #           display(span("opcCallD redirect:", fgYellow),
-    #                   span("procId=" & $procId & " -> module=" & imported.mainChunk.file))
-    #         break
-    #     #   if not redirected:
-    #     #     # As a last chance, scan vm.importedModules
-    #     #     for _, imported in vm.importedModules:
-    #     #       if procId >= 0 and procId < imported.procs.len:
-    #     #         targetScript = imported
-    #     #         redirected = true
-    #     #         when defined(hayaVmWriteStackOps):
-    #     #           display(span("opcCallD redirect(vm):", fgYellow),
-    #     #                   span("procId=" & $procId & " -> module=" & imported.mainChunk.file))
-    #     #         break
-
-    #     if not redirected:
-    #       raise newException(ValueError,
-    #         "opcCallD: procId " & $procId & " out of bounds for module " & chunkPath &
-    #         " (available 0.." & $(targetScript.procs.len - 1) & "). " &
-    #         "No imported module contains this proc index.")
-
-    #   let p = targetScript.procs[procId]
-
-    #   # store the current frame
-    #   storeFrame()
-
-    #   if stack.len < p.paramCount:
-    #     raise newException(ValueError,
-    #       "Not enough arguments on stack for call to " & p.name &
-    #       " (needed " & $p.paramCount & ", have " & $stack.len & ")")
-    #   stackBottom = stack.len - p.paramCount
-
-    #   when defined(hayaVmWriteStackOps):
-    #     display(span("opc:", fgGreen), span("<" & $opcCallD & ">"),
-    #       span("filePath=" & chunkPath & " procId=" & $procId &
-    #            " module=" & targetScript.mainChunk.file &
-    #            " name=" & p.name & " paramCount=" & $p.paramCount))
-
-    #   case p.kind
-    #   of pkNative:
-    #     if p.chunk.isNil:
-    #       raise newException(ValueError,
-    #         "opcCallD: native proc '" & p.name & "' has nil chunk in module " & targetScript.mainChunk.file)
-    #     currentChunk = p.chunk
-    #     cached = vm.getCachedOps(currentChunk)
-    #     co = cached
-    #     pcIdx = 0
-    #     continue
-    #   of pkForeign:
-    #     let callResult =
-    #       if p.paramCount > 0:
-    #         p.foreign(stack{^p.paramCount})
-    #       else:
-    #         p.foreign(nil)
-    #     restoreFrame()
-
-    #     # push result if the foreign proc has a return value
-    #     if p.hasResult: stack.push(callResult)
-
-    #     when defined(hayaVmWriteStackOps):
-    #       if callResult != nil:
-    #         echo "Foreign call result: ", callResult
-    #       else:
-    #         echo "Foreign call result: nil"
     of opcReturnVal:
       let rv = stack.pop()
       restoreFrame()

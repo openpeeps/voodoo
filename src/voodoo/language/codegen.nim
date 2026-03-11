@@ -74,6 +74,7 @@ type
     parserCallback*: ParserCallback
       ## a callback used to parse custom nodes
     stdlibs: StandardLibrary
+    triggerFromPath: Option[string]
 
   StandardLibrary = TableRef[string, proc(script: Script, systemModule: Module): Module]
 
@@ -2253,25 +2254,15 @@ proc genImport(node: Node) {.codegen.} =
       for n in astProgram.nodes:
         gen.genStmt(n)
     else: discard
-    
+
     # cache the parsed AST for future imports
     codegenCache.cachedAst[path] = astProgram
-    
-    # todo handle errors
-    # except ParseError as e:
-    #   # if the module could not be parsed, emit an error
-    #   pathNode.error(ErrModuleParseError % [path, e.msg])
-    # except IOError as e:
-    #   # if the module could not be read, emit an error
-    #   pathNode.error(ErrModuleIOError % [path, e.msg])
 
 proc genComment(node: Node) {.codegen.} =
   ## Generate an HTML comment.
   # this is a no-op, because comments are not compiled
   # into the final code, but they are useful for documentation
-  # and debugging purposes
-  # gen.chunk.emit(opcComment)
-  gen.chunk.emit(gen.chunk.getString(node.comment))
+  gen.chunk.emit(opcNoop)
 
 proc genStmt(node: Node) {.codegen.} =
   ## Generate code for a statement.
@@ -2364,9 +2355,12 @@ proc addIterator*(script: Script, module: Module, name: string) =
 proc initCompiler*(script: Script, module: Module,
           chunk: Chunk, pkgr: Packager,
           stdlibs: StandardLibrary,
-          parserCallback: ParserCallback = nil): CodeGen =
+          parserCallback: ParserCallback = nil,
+          triggerFromPath: Option[string] = none(string)
+  ): CodeGen =
   ## Initialize a new code generator with a new script and module.
   result = initCodeGen(script, module, chunk, pkgr = pkgr)
+  result.triggerFromPath = triggerFromPath
   result.stdlibs = stdlibs
   result.parserCallback = parserCallback
   # script.stdpos = script.procs.high
