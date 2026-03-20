@@ -80,6 +80,11 @@ type
 
 var codegenCache* = CodeGenCache()
 
+proc count*(gen: var CodeGen): uint =
+  ## Get the current value of the codegen's counter, and increment it.
+  result = gen.counter
+  gen.counter.inc()
+
 proc error*(node: Node, msg: string) =
   ## Raise a compile error on the given node.
   raise (ref CodeGenError)(
@@ -1237,7 +1242,6 @@ proc genArrayAccess(node: Node): Sym {.codegen.} =
   var
     valTy = gen.genExpr(node[0])
     indexTy = gen.genExpr(node[1])
-
   # unwrap value type if it's a variable
   if valTy.kind in skVars:  valTy = valTy.varTy
   
@@ -1554,104 +1558,6 @@ proc genProc(node: Node, isInstantiation = false): Sym {.codegen.} =
 
   # pop the generic declaration scope
   # if not isInstantiation and node[1].kind != nkEmpty:
-  if not isInstantiation and sym.isGeneric:
-    gen.popScope()
-  result = sym
-
-proc genMacro(node: Node, isInstantiation = false): Sym {.codegen.} =
-  ## Generates code for a block of code that contains a procedure.
-  if not isInstantiation and node[1].kind != nkEmpty:
-    gen.pushScope()
-  # get some basic metadata
-  let
-    name = node[0]
-    formalParams = node[2]
-    body = node[3]
-    genericParams =
-      if not isInstantiation:
-        # collect generic params if we're not instantiating
-        gen.collectGenericParams(node[1])
-      else: none(seq[Sym])
-    params = gen.collectParams(formalParams, genericParams)
-    returnTy = # empty return type == void
-      if formalParams[0].kind != nkEmpty:
-        gen.lookup(formalParams[0])
-      else:
-        gen.module.sym"void"
-  # create a new proc
-  var (sym, theProc) =
-        gen.script.newProc(name, impl = node,
-                    params, returnTy, kind = pkNative, 
-                    genKind = gen.kind)
-  sym.genericParams = genericParams
-  sym.procType = ProcType.procTypeMacro
-  
-  # add the proc into the declaration scope
-  # we need to do this here, otherwise recursive calls will be broken
-  gen.addSym(sym, scopeOffset = ord(sym.genericParams.isSome))
-
-  # if we're in an instantiation or the proc is not generic, generate its code
-  if not sym.isGeneric or isInstantiation:
-    var
-      chunk = newChunk(gen.chunk.file)
-      procGen = initCodeGen(gen.script, gen.module, chunk, gkBlockProc,
-        ctxAllocator =
-          if gen.kind == gkToplevel: nil
-          else: gen.ctxAllocator
-      )
-    theProc.chunk = chunk
-    chunk.file = gen.chunk.file
-    procGen.procReturnTy = returnTy
-
-    # add the proc's parameters as locals
-    # TODO: closures and upvalues
-    procGen.pushScope()
-    for (name, ty, implValTy, isMut, isOpt) in params:
-      var varType = if isMut: skVar else: skLet
-      let param = procGen.declareVar(name, varType, ty)
-      param.varSet = true  # arguments are not assignable
-    
-    # todo
-    # let stmtVar = procGen.declareVar(ast.newIdent("stmt"), skLet, gen.module.sym"any")
-    # stmtVar.varSet = true
-    # procGen.pushDefault(gen.module.sym"string")
-    
-    # define the default `attrs` variable
-    # this is used to store the attributes of the block.
-    let attrs = newIdent("attrs")
-    procGen.declareVar(attrs, skVar, gen.module.sym"string", isMagic = true)
-    procGen.pushDefault(gen.module.sym"string")
-    procGen.popVar(attrs)
-    
-    # defines the default `blockStmt` variable
-    # this is used to store any additional statements
-    # provided at call time
-    # let blockStmt = newIdent("blockStmt")
-    # procGen.declareVar(blockStmt, skVar, gen.module.sym"any", isMagic = true)
-    # procGen.popVar(blockStmt)
-
-    # add the proc into the script
-    gen.script.procs.add(theProc)
-    if sym.procExport:
-      gen.script.procsExport.add(theProc)
-
-    # compile the proc's body
-    discard procGen.genBlock(body, isStmt = true)
-
-    # if the macro has any deferred code to be executed,
-    # we need to emit it now.
-    # procGen.chunk.emit(opcLoadDeferred)
-
-    # finally, return ``result`` if applicable
-    if returnTy.tyKind != ttyVoid:
-      let resultSym = procGen.lookup(newIdent("result"))
-      procGen.chunk.emit(opcPushL)
-      procGen.chunk.emit(resultSym.varStackPos.uint8)
-      procGen.chunk.emit(opcReturnVal)
-    else:
-      procGen.chunk.emit(opcReturnVoid)
-
-  # pop the generic declaration scope
   if not isInstantiation and sym.isGeneric:
     gen.popScope()
   result = sym
@@ -2278,11 +2184,10 @@ proc genStmt(node: Node) {.codegen.} =
     of nkReturn: gen.genReturn(node)              # return statement
     of nkYield: gen.genYield(node)                # yield statement
     of nkProc: discard gen.genProc(node)          # procedure declaration
-    of nkMacro: discard gen.genMacro(node)        # macro declaration
     of nkIterator: discard gen.genIterator(node)  # iterator declaration
     of nkObjectStorage: discard gen.genObjectStorage(node)      # object declaration
     of nkObject: discard gen.genObject(node)
-    # of nkTypeDef: discard gen.genTypeDef(node)    # type definition
+    of nkTypeDef: discard gen.genTypeDef(node)    # type definition
     # of nkHtmlElement: discard gen.htmlConstr(node) # HTML element construction
     # of nkJavaScriptSnippet: discard gen.storeJavaScript(node) # JavaScript snippet
     of nkImport, nkInclude: gen.genImport(node) # import statement

@@ -65,22 +65,13 @@ type
     nkInclude        # include statement - include "path/to/file" 
     nkStatic         # static statement 
 
-    # html
-    # nkHtmlElement    # html element - <tag attr="value">...</tag>
-    # nkHtmlAttribute
-
     # declarations
     nkObject         # object declaration - object o[T, ...] {...}
     nkArray          # array declaration - array[T, ...] {...}
     nkProc           # procedure declaration - proc p(a: s, ...) -> t {...}
-    nkMacro          # a block - {...}
     nkIterator       # iterator declaration - iterator i(a: s, ...) -> t {...}
     nkBlock          # block statement - block {...}
-    # nkJavaScriptSnippet
     nkDocComment     # doc comment - <!-- ... -->
-    nkViewLoader     # view loader using `@view` placeholder
-    nkClientBlock    # client block using `@client ... @end`
-
     nkObjectStorage  # object storage - used to store JSON-like objects
 
   HtmlAttributeType* = enum
@@ -108,7 +99,7 @@ type
       ident*: string
         ## The identifier name
     of nkTypeDef:
-      typeIdent*: string
+      typeIdent*: Node
         ## The identifier of the type being defined
       typeTy*: Node
         ## The type node
@@ -325,10 +316,8 @@ proc render*(node: Node): string =
       result.add('\n')
   of nkDocComment:
     result = "<!-- " & node[0].render & " -->"
-  of nkViewLoader:
-    result = "@view\n"
-  of nkClientBlock:
-    result = "@client\n" & node[0].render.indent(2) & "\n@end"
+  # of nkClientBlock:
+  #   result = "@client\n" & node[0].render.indent(2) & "\n@end"
   else: discard
 
 proc newNode*(kind: NodeKind): Node =
@@ -342,10 +331,6 @@ proc newEmpty*: Node =
 proc newNil*: Node =
   ## Construct a new nil node.
   newNode(nkNil)
-
-proc newMacro*(children: varargs[Node]): Node =
-  ## Construct a new block.
-  newNode(nkMacro)
 
 proc nkBlock*(children: varargs[Node]): Node =
   ## Construct a new block.

@@ -17,7 +17,7 @@ import pkg/voodoo/extensibles
 import ./chunk, ./value
 
 when defined(hayaVmWriteStackOps):
-  import pkg/kapsis/cli
+  import pkg/kapsis/interactive/prompts
 
 type
   VMPreferences* = object
