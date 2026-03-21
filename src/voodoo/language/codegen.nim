@@ -15,9 +15,6 @@ import ./[ast, chunk, errors, sym, value, resolver]
 import ../packagemanager/packager
 import ../extensibles
 
-# import ./transpilers/jsgen
-# import ./utils
-
 type
   ContextAllocator {.acyclic.} = ref object
     ## a context allocator. shared between codegen instances.
@@ -100,15 +97,6 @@ proc warn(node: Node, msg: string) =
   stdout.styledWriteLine(fgYellow, styleBright, "Warning ",
       resetStyle, fgDefault, ErrorFmt % ["", $node.ln, $node.col, msg])
 
-#
-# forward declarations
-#
-proc declareVar*(gen: var CodeGen, name: Node, kind: SymKind, ty: Sym,
-                isMagic = false, varExport = false): Sym {.discardable.}
-
-proc pushDefault(gen: var CodeGen, ty: Sym)
-proc popVar(gen: var CodeGen, name: Node)
-
 proc allocCtx*(allocator: ContextAllocator): Context =
   ## Allocate a new context
   while result in allocator.occupied:
@@ -174,7 +162,28 @@ macro codegen(theProc: untyped): untyped =
     theProc[6] = newCall("genGuard", theProc[6])
   result = theProc
 
+#
+# forward declarations
+#
+proc declareVar*(gen: var CodeGen, name: Node, kind: SymKind, ty: Sym, isMagic = false, varExport = false): Sym {.discardable.}
+proc pushDefault(gen: var CodeGen, ty: Sym)
+proc popVar(gen: var CodeGen, name: Node)
+proc lookup(gen: var CodeGen, symName: Node, quiet = false): Sym
+proc genScript*(program: Ast, includePath: Option[string], emitHalt: static bool = true) {.codegen.}
+proc genExpr(node: Node, varUnwrap = true): Sym {.codegen.}
+proc genBlock(node: Node, isStmt: bool): Sym {.codegen.}
+proc genStmt(node: Node) {.codegen.}
+proc genProc(node: Node, isInstantiation = false): Sym {.codegen.}
+proc genMacro(node: Node, isInstantiation = false): Sym {.codegen.}
+proc genIterator(node: Node, isInstantiation = false): Sym {.codegen.}
+proc genObject(node: Node, isInstantiation = false): Sym {.codegen.}
+proc genObjectStorage(node: Node, isInstantiation = false): Sym {.codegen.}
+proc genArray(node: Node, isInstantiation = false): Sym {.codegen.}
+proc genGetField(node: Node): Sym {.codegen.}
+proc genTypeDef(node: Node): Sym {.codegen.}
+
 let callBuiltinEcho = ast.newCall(ast.newIdent"echo")
+  # some cached nodes for codegen optimizations
 
 proc varCount(scope: Scope): int =
   # Count the number of variables in a scope.
@@ -277,7 +286,7 @@ const currentContext = Context(high(uint16))
 
 proc pushFlowBlock(gen: var CodeGen, kind: FlowBlockKind,
                    context = currentContext) =
-  ## Push a new flow block. This creates a new scope for the flow block.
+  # Push a new flow block. This creates a new scope for the flow block.
   let fblock = FlowBlock(kind: kind, bottomScope: gen.scopes.len)
   if context == currentContext:
     fblock.context = gen.context
@@ -287,10 +296,10 @@ proc pushFlowBlock(gen: var CodeGen, kind: FlowBlockKind,
   gen.pushScope()
 
 proc breakFlowBlock(gen: var CodeGen, fblock: FlowBlock) =
-  ## Break a code block. This discards the flow block's scope's variables *and*
-  ## generates a jump past the block.
-  ## This does not remove the flow block from the stack, it only jumps past it
-  ## and discards any already declared variables.
+  # Break a code block. This discards the flow block's scope's variables *and*
+  # generates a jump past the block.
+  # This does not remove the flow block from the stack, it only jumps past it
+  # and discards any already declared variables.
   gen.chunk.emit(opcDiscard)
   gen.chunk.emit(gen.varCount(fblock.bottomScope).uint8)
   gen.chunk.emit(opcJumpFwd)
@@ -304,9 +313,9 @@ proc popFlowBlock(gen: var CodeGen) =
   discard gen.flowBlocks.pop()
 
 proc findFlowBlock(gen: var CodeGen, kinds: set[FlowBlockKind]): FlowBlock =
-  ## Find the topmost flow block, with the given kind, and defined in the same
-  ## context as ``gen``'s current context.
-  ## Returns ``nil`` if a matching flow block can't be found.
+  # Find the topmost flow block, with the given kind, and defined in the same
+  # context as ``gen``'s current context.
+  # Returns ``nil`` if a matching flow block can't be found.
   for i in countdown(gen.flowBlocks.len - 1, 0):
     let fblock = gen.flowBlocks[i]
     if fblock.context == gen.context and fblock.kind in kinds:
@@ -341,24 +350,6 @@ proc declareVar*(gen: var CodeGen, name: Node, kind: SymKind, ty: Sym,
   if not result.varLocal:
     result.varExport = varExport
   gen.addSym(result) # add the symbol to the current scope
-
-proc lookup(gen: var CodeGen, symName: Node, quiet = false): Sym
-
-proc genScript*(program: Ast, includePath: Option[string],
-              emitHalt: static bool = true) {.codegen.}
-
-proc genExpr(node: Node, varUnwrap = true): Sym {.codegen.}
-proc genBlock(node: Node, isStmt: bool): Sym {.codegen.}
-proc genStmt(node: Node) {.codegen.}
-proc genProc(node: Node, isInstantiation = false): Sym {.codegen.}
-proc genMacro(node: Node, isInstantiation = false): Sym {.codegen.}
-proc genIterator(node: Node, isInstantiation = false): Sym {.codegen.}
-proc genObject(node: Node, isInstantiation = false): Sym {.codegen.}
-proc genObjectStorage(node: Node, isInstantiation = false): Sym {.codegen.}
-proc genArray(node: Node, isInstantiation = false): Sym {.codegen.}
-proc genGetField(node: Node): Sym {.codegen.}
-proc genTypeDef(node: Node): Sym {.codegen.}
-# proc htmlConstr(node: Node): Sym {.codegen.}
 
 proc instantiate(gen: var CodeGen, sym: Sym, args: seq[Sym],
                  errorNode: Node): Sym =
@@ -833,6 +824,19 @@ proc callProc(procSym: Sym, argTypes: seq[Sym],
   
     # resolve generic params
     gen.resolveGenerics(theProc, argTypes, errorNode)
+
+    # Fill omitted optional parameters with defaults
+    let params = theProc.procParams
+    if argTypes.len < params.len:
+      for i in argTypes.len ..< params.len:
+        let p = params[i]
+        if not p.isOpt:
+          errorNode.error("missing required argument: " & p.name.ident)
+
+        if p.implSym != nil and p.implSym.impl != nil:
+          discard gen.genExpr(p.implSym.impl)  # pushes default value
+        else:
+          gen.pushDefault(unwrapType(p.ty))    # fallback by type
 
     # call the proc
     gen.chunk.emit(opcCallD)
@@ -1372,82 +1376,61 @@ proc collectParams(formalParams: Node,
   # Helper used to collect parameters from an
   # `nkFormalParams` to a `seq[ProcParam]`
   for defs in formalParams[1..^1]:
-    var implSym: Sym
-    if defs[^1].kind != nkEmpty:
-      # checking if we have an implicit value
-      let n = defs[^1]
-      case n.kind
-      of nkBool, nkInt, nkFloat, nkString:
-        implSym = gen.getDefaultSym(n.kind)
-        implSym.impl = n
-      else:
-        implSym = gen.lookup(n)
+    let
+      rawTyNode = defs[^2]
+      tyNode =
+        if rawTyNode.kind == nkVarTy: rawTyNode.varType
+        else: rawTyNode
+      defaultNode = defs[^1]
 
-    # var sym: Sym =
-    #   if implSym == nil:
-    #     gen.lookup(defs[^2])
-    #   else:
-    #     implSym
-
-    var sym: Sym
-    if implSym == nil:
-      # If the type is an indexed type (e.g. array[string]), instantiate it
-      if defs[^2].kind == nkIndex and defs[^2][0].kind == nkIdent and defs[^2][0].ident == "array":
-        let baseArraySym = gen.lookup(defs[^2][0])
-        let elemTy = gen.lookup(defs[^2][1])
-        sym = gen.instantiate(baseArraySym, @[elemTy], defs[^2])
-        sym.arrayTy = elemTy # set the array's element type
-      else:
-        sym = gen.lookup(defs[^2])
+    # Resolve declared parameter type (always from type position).
+    var paramTy: Sym
+    if tyNode.kind == nkIndex and tyNode[0].kind == nkIdent and tyNode[0].ident == "array":
+      let
+        baseArraySym = gen.lookup(tyNode[0])
+        elemTy = gen.lookup(tyNode[1])
+      paramTy = gen.instantiate(baseArraySym, @[elemTy], tyNode)
+      paramTy.arrayTy = elemTy
     else:
-      sym = implSym
+      paramTy = gen.lookup(tyNode)
 
+    # Optional lightweight type-check for literal defaults.
+    if defaultNode.kind != nkEmpty:
+      var defaultTy: Sym = nil
+      case defaultNode.kind
+      of nkBool, nkInt, nkFloat, nkString, nkNil, nkArray, nkObjectStorage:
+        defaultTy = gen.getDefaultSym(defaultNode.kind)
+      of nkIdent:
+        let s = gen.lookup(defaultNode, quiet = true)
+        if s != nil:
+          defaultTy = unwrapType(s)
+      else:
+        discard
+
+      if defaultTy != nil and not unwrapType(defaultTy).sameType(unwrapType(paramTy)):
+        defaultNode.error(ErrTypeMismatch % [$unwrapType(defaultTy).name, $unwrapType(paramTy).name])
+
+    # Build ProcParam entries (one per declared name).
     for name in defs[0..^3]:
-      # if sym.kind == skType:
-        # case ty.tyKind
-        # of ttyArray:
-          # if ty.arrayTy == nil and defs[^2].kind == nkIndex:
-          #   # getting the type of the array using the generic `T`
-          #   let identSym: Sym = gen.typeLookup(defs[^2][1].ident)
-          #   ty.arrayTy = identSym
-          #   if identSym == nil and genericParams.isSome():
-          #     let genParams = genericParams.get()
-          #     debugEcho genParams
-          #     for genParam in genParams:
-          #       if genParam.name.ident == defs[^2][1].ident:
-          #         # we found the generic parameter, so we use it
-          #         ty.arrayTy = genParam.constraint
-          #         break
-          # if implSym != nil:
-          #   # otherwise, we assume the array is of
-          #   # the same type as the implementation symbol
-          #   ty.arrayTy = implSym
-          # elif ty.arrayTy == nil:
-          #   # well, we don't know the type of the array.
-          #   # so we emit an error that the array type is not concrete
-          #   name.error(ErrTypeNotConcrete % ["array"])
-          # result.add(
-          #   genParam(name, ty, implSym,
-          #     # determine if the parameter is marked as `var` mutable
-          #     isMut = defs[^2].kind == nkVarTy,
-          #     # implicit values marks the parameter as optional
-          #     isOpt = defs[^1].kind != nkEmpty
-          #   )
-          # )
-        # else:
-        # before adding the parameter, we check if the type is generic
-        # if genericParams.isSome():
-        #   let genParams = genericParams.get()
-        #   for genParam in genParams:
-        #     if genParam.name.ident == defs[^2][1].ident:
-        #       # sym.genericBase = some(genParam)
-        #       break
+      var implSym: Sym = nil
+      let isOptional = defaultNode.kind != nkEmpty
+      if isOptional:
+        let defName =
+          if name.kind == nkIdent: name.ident
+          else: "param"
+        implSym = newSym(
+          skConst,
+          newIdent("__default_" & defName & "_" & $gen.count()),
+          impl = defaultNode
+        )
+
       result.add(
-        genParam(name, sym, implSym,
-          # determine if the parameter is marked as `var` mutable
-          isMut = defs[^2].kind == nkVarTy,
-          # implicit values marks the parameter as optional
-          isOpt = defs[^1].kind != nkEmpty
+        genParam(
+          name,
+          paramTy,
+          implSym,
+          isMut = rawTyNode.kind == nkVarTy,
+          isOpt = isOptional
         )
       )
 
@@ -1522,11 +1505,6 @@ proc genProc(node: Node, isInstantiation = false): Sym {.codegen.} =
           if isMut: skVar # value is mutable
           else: skLet # value is immutable
         let param = procGen.declareVar(name, varType, ty)
-        # if the parameter has an implementation value,
-        # we need to push it onto the stack
-        if implSym != nil:
-          if implSym.impl != nil:
-            discard gen.genExpr(implSym.impl)
         param.varSet = true  # arguments are not assignable
 
     # declare ``result`` if applicable

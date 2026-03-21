@@ -860,9 +860,9 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
       of pkForeign:
         let callResult =
           if p.paramCount > 0:
-            p.foreign(stack{^p.paramCount})
+            p.foreign(stack{^p.paramCount}, p.paramCount)
           else:
-            p.foreign(nil)
+            p.foreign(nil, 0)
         restoreFrame() # after foreign call
         if p.hasResult:
           stack.push(callResult)

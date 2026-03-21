@@ -77,8 +77,9 @@ type
   StackView* = ptr UncheckedArray[Value]
     ## An unsafe view into a Stack.
 
-  ForeignProc* = proc (args: StackView): Value
-    ## A foreign proc.
+  ForeignProc* = proc (args: StackView, argc: int): Value
+    ## A foreign proc implementation, used for native code in
+    ## the standard library and user-defined foreign procs in general
 
 proc `$`*(value: Value): string =
   ## Returns a value's string representation.

@@ -574,11 +574,13 @@ proc addCallable*(scope: Scope, sym: Sym, lookupName: Node,
           scope.exportFunctions[lookupName.ident] = choice
 
   if scope.functions[lookupName.ident].canAdd(sym):
-    scope.functions[lookupName.ident].choices.add(sym)
-    # scope.syms[lookupName].choices.add(sym) # todo remove `syms`
-    when fromOtherModule == false:
-      if sym.canExport():
-        scope.exportFunctions[lookupName.ident].choices.add(sym)
+    # Only add if not already present
+    if sym notin scope.functions[lookupName.ident].choices:
+      scope.functions[lookupName.ident].choices.add(sym)
+      when fromOtherModule == false:
+        if sym.canExport():
+          if sym notin scope.exportFunctions[lookupName.ident].choices:
+            scope.exportFunctions[lookupName.ident].choices.add(sym)
     return true
 
 proc addType*(scope: Scope, sym: Sym, lookupName: Node, fromOtherModule: static bool = false): bool {.discardable.} =
