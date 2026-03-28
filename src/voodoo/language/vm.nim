@@ -354,6 +354,7 @@ proc prewarmScriptOps*(vm: Vm, s: Script) =
 
 proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
         staticString: Option[string] = none(string),
+        globaldata = newJObject(),
         localData = newJObject()): string =
   ## Interpret the given currentChunk in the context
   ## of the given script.
@@ -378,6 +379,7 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
 
   # Inject localData as $this in globals
   # this is Tim-specific. TODO - move to Tim integration layer
+  vm.globals["app"] = initValue(globalData)
   vm.globals["this"] = initValue(localData)
 
   template unary(expr) =

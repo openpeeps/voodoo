@@ -2246,13 +2246,8 @@ proc initCompiler*(script: Script, module: Module,
   result.triggerFromPath = triggerFromPath
   result.stdlibs = stdlibs
   result.parserCallback = parserCallback
-  # script.stdpos = script.procs.high
-  # preloadStdlib()
-  # declare a `this` variable for JSON
-  let this = newIdent("this")
-  result.declareVar(this, skConst,
-      result.module.sym"json", isMagic = true)
 
-  # result.pushVar(this)
-  # result.pushDefault(result.module.sym"json")
-  # result.popVar(this)
+  let appStorage = newIdent("app")
+  let thisStorage = newIdent("this")
+  result.declareVar(appStorage, skConst, result.module.sym"json", isMagic = true)
+  result.declareVar(thisStorage, skConst, result.module.sym"json", isMagic = true)
