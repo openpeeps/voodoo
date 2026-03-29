@@ -238,7 +238,7 @@ proc render*(node: Node): string =
     result =
       if node.len == 0: "{}"
       else: "{\n" & node.children.join("\n").indent(2) & "\n}"
-  of nkMacro, nkArray:
+  of nkArray:
     discard # todo
   of nkIdentDefs:
     result = node[0..^3].join(", ")
