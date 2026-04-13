@@ -1197,9 +1197,27 @@ proc genGetField(node: Node): Sym {.codegen.} =
     else:
       node[1].error("Pointer member access must be a call")
 
-  # Only objects and JSON can be accessed with dot/bracket
-  if valTy.tyKind notin {ttyObject, ttyJson}:
-    node[0].error(ErrTypeMismatch % [$valTy.name, "object|json"])
+  if valTy.tyKind notin {ttyObject}:
+    # Only objects can be accessed with dot/bracket
+    # For non object/json receiver: treat `a.b` as `b(a)` and `a.b(x)` as `b(a, x)`.
+    var
+      calleeNode: Node
+      argTypes: seq[Sym] = @[valTy]
+
+    case node[1].kind
+    of nkIdent, nkIndex:
+      calleeNode = node[1]
+    of nkCall:
+      calleeNode = node[1][0]
+      for arg in node[1].children[1..^1]:
+        argTypes.add(gen.genExpr(arg))
+    else:
+      node[1].error(ErrInvalidField % $node[1])
+
+    let fnSym = gen.lookup(calleeNode)
+    return gen.callProc(fnSym, argTypes, node)
+
+    # node[0].error(ErrTypeMismatch % [$valTy.name, "object|json"])
 
   # If it's JSON, dot notation is not supported
   if valTy.tyKind == ttyJson and node[1].kind notin {nkBracket, nkCall}:
@@ -1575,10 +1593,7 @@ proc genExpr(node: Node, varUnwrap = true): Sym {.codegen.} =
     # handle infix expressions
     result = gen.infix(node)
   of nkDot:
-    # generate code for object/class field access
-    # var symNode = gen.lookup(node[0])
-    # echo symNode.name
-    # gen.pushVar(symNode)
+    # handle field access using dot notation `$a.b`
     result = gen.genGetField(node)
   of nkBracket:
     # handle array access using square brackets `$a[0]`
