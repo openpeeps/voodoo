@@ -3,12 +3,11 @@
 # (c) 2024 George Lemon | LGPL-v3 License
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/tim
+import pkg/[nyml, semver]
 from std/net import Port, `$`
 
-import pkg/[nyml, semver]
-
 when not defined napibuild:
-  import ../parsers/voojson
+  import pkg/openparser/json
 
 export `$`
 
@@ -88,17 +87,17 @@ when not defined napibuild:
     ## This is used to generate the `tim.yml` file
     let str =
       if c.`type` == ConfigType.typePackage:
-        voojson.toJson(c, JsonOptions(
+        json.toJson(c, JsonOptions(
           skipFields: @["type", "compilation", "browser_sync"]
         ))
       else:
-        voojson.toJson(c)
-    dump(voojson.fromJson(str))
+        json.toJson(c)
+    dump(json.fromJson(str))
 
   proc `$`*(c: TimConfig): string = 
     ## Generate a string representation of the TimConfig
     ## using `pkg/voodoo`
-    voojson.toJson(c)
+    json.toJson(c)
 
 proc getBasePath*(config: TimConfig): string =
   return config.compilation.basePath

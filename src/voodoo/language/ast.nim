@@ -8,14 +8,13 @@
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/voodoo
 
-import std/[hashes, strutils, json, sequtils, options]
+import std/[hashes, strutils, sequtils, options]
+import std/htmlparser
+export htmlparser
 
-# import pkg/jsony
+import pkg/openparser/json
+
 import ../extensibles
-# import ../parsers/
-import pkg/jsony
-import ../parsers/htmlpar
-export htmlpar
 
 type
   NodeKind* {.extensible.} = enum

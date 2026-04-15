@@ -9,10 +9,12 @@
 #          https://github.com/openpeeps/voodoo
 
 import std/[tables, hashes, dynlib, strutils]
+import pkg/voodoo/extensibles
 import value
 
 type
-  Opcode* = enum ## An opcode, used for execution.
+  Opcode* {.extensible.} = enum
+    ## An opcode, used for execution.
 
     opcNoop = "noop"
 
@@ -82,20 +84,6 @@ type
     opcCallI = "callI"            ## call indirect
     opcReturnVal = "returnVal"    ## return value from proc
     opcReturnVoid = "returnVoid"  ## return void from proc
-    # opcEchoCode = "echoCode"        ## echo code to stdout
-    
-    opcBeginHtml = "beginHtml"    ## construct HTML object
-    opcBeginHtmlWithAttrs = "behinHtmlWithAttrs" ## construct HTML object with attributes
-    opcAttrEnd = "attrEnd"        ## ends HTML object
-    opcInnerHtml = "innerHtml"        ## ends HTML object
-    opcTextHtml = "textHtml"      ## adds text to HTML object
-    opcCloseHtml = "closeHtml"    ## closes HTML object
-
-    opcAttrClass = "attrClass"    ## adds class to HTML object
-    opcAttrId = "attrId"          ## adds id to HTML object
-    opcAttr = "attr"
-    opcAttrKey = "attrKey"        ## adds a key to HTML object attribute
-    opcWSpace = "space"           ## adds whitespace to HTML result
 
     opcImportModule = "importModule"  ## import a module
     opcImportModuleAlias = "importModuleAlias"  ## import a module with an alias

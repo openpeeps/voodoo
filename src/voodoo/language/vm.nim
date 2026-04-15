@@ -11,9 +11,7 @@
 import std/[strutils, tables, critbits, algorithm,
           json, options, hashes, dynlib]
 
-import pkg/libffi
 import pkg/voodoo/extensibles
-
 import ./chunk, ./value
 
 when defined(hayaVmWriteStackOps):
@@ -48,8 +46,9 @@ type
     # manage imported modules
     importedModules*: Table[string, Script]
 
-  CallFrame = tuple
+  CallFrame* = tuple
     currentChunk: Chunk
+    cachedOps: CachedOps
     pcIdx: int
     stackBottom: int
     script: Script
@@ -140,14 +139,14 @@ proc computeBackwardTarget(op: Operation, dist: int): int =
   ## targetByte = op.byteOffset - dist  (old encoding derived)
   op.byteOffset - dist
 
-proc ffiTypeFor(typeId: TypeId): ptr Type =
-  # FFI helpers
-  case typeId
-  of tyBool, tyInt: addr type_sint64
-  of tyFloat: addr type_double
-  of tyString: addr type_pointer
-  of tyPointer: addr type_pointer
-  else: addr type_void
+# proc ffiTypeFor(typeId: TypeId): ptr Type =
+#   # FFI helpers
+#   case typeId
+#   of tyBool, tyInt: addr type_sint64
+#   of tyFloat: addr type_double
+#   of tyString: addr type_pointer
+#   of tyPointer: addr type_pointer
+#   else: addr type_void
 
 # Hot code markers (stubs)
 proc markHot(vm: Vm, currentChunk: Chunk) = discard
@@ -220,9 +219,6 @@ proc parseChunk(currentChunk: Chunk): CachedOps =
         let filePathIdx = readArg[uint16](pc)
         let pid = readArg[uint16](pc).int
         addOp(oc, filePathIdx.int64, pid.int64, akString, akInt)
-      of opcAttrClass, opcAttrId, opcBeginHtmlWithAttrs, opcBeginHtml, opcCloseHtml:
-        let sid = readArg[uint16](pc)
-        addOp(oc, sid.int64, 0, akString)
       of opcConstrArray, opcConstrObj:
         let cnt = readArg[uint16](pc).int
         addOp(oc, cnt.int64, 0, akInt)
@@ -232,10 +228,10 @@ proc parseChunk(currentChunk: Chunk): CachedOps =
       of opcGetF, opcSetF:
         let f = readArg[uint8](pc).int
         addOp(oc, f.int64, 0, akInt)
-      of opcFFIGetProc:
-        let sid = readArg[uint16](pc)
-        let argc = readArg[uint8](pc).int
-        addOp(oc, sid.int64, argc.int64, akString, akInt)
+      # of opcFFIGetProc:
+      #   let sid = readArg[uint16](pc)
+      #   let argc = readArg[uint8](pc).int
+      #   addOp(oc, sid.int64, argc.int64, akString, akInt)
       of opcImportModule:
         let sid = readArg[uint16](pc)
         addOp(oc, sid.int64, 0, akString)
@@ -361,7 +357,7 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
   var
     stack: Stack = newSeqOfCap[Value](VMInitialPreallocatedStackSize)
       # preallocated stack for local variables / evaluation
-    callStack: seq[CallFrame] # todo preallocate
+    callStack: seq[CallFrame] = newSeqOfCap[CallFrame](256)
       # call stack for managing imports / function calls
     script = script
       # current script (used for error reporting and imports)
@@ -431,19 +427,30 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
     callStack.add(
       (
         currentChunk: currentChunk,
+        cachedOps: co,
         pcIdx: pcIdx,
         stackBottom: stackBottom,
         script: script
       )
     )
 
+  # template restoreFrame() =
+  #   stack.setLen(stackBottom)
+  #   let frame = callStack.pop()
+  #   currentChunk = frame.currentChunk
+  #   script = frame.script
+  #   cached = vm.getCachedOps(currentChunk)
+  #   co = cached
+  #   pcIdx = frame.pcIdx
+  #   stackBottom = frame.stackBottom
+  
   template restoreFrame() =
     stack.setLen(stackBottom)
     let frame = callStack.pop()
     currentChunk = frame.currentChunk
     script = frame.script
-    cached = vm.getCachedOps(currentChunk)
-    co = cached
+    co = frame.cachedOps
+    cached = co
     pcIdx = frame.pcIdx
     stackBottom = frame.stackBottom
 
@@ -487,415 +494,281 @@ proc interpret*(vm: Vm, script: Script, startChunk: Chunk,
     when defined(hayaVmWriteStackOps):
       display(span("OPCODE:", fgMagenta),
               span($oc), span("chunk=" & $currentChunk & " pcIdx=" & $pcIdx & " stack=" & $stack))
-    case oc
-    # Constants / simple pushes
-    of opcPushNil:
-      stack.push(initObject(co.getArg1Int(pcIdx).uint16, nilObject))
-    of opcPushI, opcPushF, opcPushS:
-      co.pushConst(pcIdx, currentChunk, stack)
-    of opcPushTrue:
-      stack.push(initValue(true))
-    of opcPushFalse:
-      stack.push(initValue(false))
-    of opcPushPointer:
-      discard
-    of opcPopPointer:
-      if stack.len > 0:
-        discard stack.pop()
-    of opcFFIGetProc:
-      # FFI dynamic call: arg1= symbol string index, arg2 = argc
-      let symbolName = co.getArg1Str(pcIdx, currentChunk)
-      let argsCount  = co.arg2[pcIdx].int
-
-      var tArgs: seq[Value]
-      for _ in 0..<argsCount:
-        tArgs.add(stack.pop())
-      tArgs.reverse()
-
-      if stack.len == 0:
-        raise newException(ValueError, "FFI: missing library handle on stack")
-      let libHandleVal = stack.pop()
-      let libHandle = libHandleVal.objectVal.data
-      if libHandle.isNil:
-        raise newException(ValueError, "FFI: library handle is nil")
-
-      let fnPtr = symAddr(libHandle, symbolName)
-      if fnPtr.isNil:
-        raise newException(ValueError, "FFI: symbol not found: " & symbolName)
-
-      const MaxArgs = 32
-      if argsCount > MaxArgs:
-        raise newException(ValueError, "FFI: too many args (max " & $MaxArgs & ")")
-
-      var
-        intVals: array[MaxArgs, int64]
-        floatVals: array[MaxArgs, float64]
-        boolVals: array[MaxArgs, bool]
-        strVals: array[MaxArgs, cstring]
-
-      let paramsMem = alloc(sizeof(ptr Type) * argsCount)
-      let argsMem   = alloc(sizeof(pointer) * argsCount)
-      
-      if paramsMem.isNil or argsMem.isNil:
-        raise newException(ValueError, "FFI: allocation failed")
-
-      var params = cast[ParamList](paramsMem)
-      var aargs  = cast[ArgList](argsMem)
-
-      try:
-        for i in 0..<argsCount:
-          let arg = tArgs[i]
-          params[i] = ffiTypeFor(arg.typeId)
-          case arg.typeId
-          of tyString:
-            strVals[i] = cstring(arg.stringVal[])
-            aargs[i] = addr strVals[i]
-          of tyInt:
-            intVals[i] = arg.intVal
-            aargs[i] = addr intVals[i]
-          of tyFloat:
-            floatVals[i] = arg.floatVal
-            aargs[i] = addr floatVals[i]
-          of tyBool:
-            boolVals[i] = arg.boolVal
-            aargs[i] = addr boolVals[i]
-          else:
-            aargs[i] = nil
-
-        var cif: TCif
-        if prep_cif(cif, DEFAULT_ABI, cuint(argsCount), addr type_pointer, params) != OK:
-          raise newException(ValueError, "FFI: prep_cif failed")
-
-        var res: pointer
-        call(cif, fnPtr, addr res, aargs)
-        if res != nil:
-          let cstr = cast[cstring](res)
-          if cstr != nil:
-            result.add($cstr)
-            stack.push(initValue($cstr))
-          else:
-            stack.push(initValue(res, symbolName))
-        else:
-            stack.push(initValue(res, symbolName))
-      finally:
-        dealloc(paramsMem)
-        dealloc(argsMem)
-    # Variables
-    of opcPushG:
-      # The `opcPushG` pushes a global variable onto the stack.
-      stack.push(vm.globals[co.getArg1Str(pcIdx, currentChunk)])
-    of opcPopG:
-      # The `opcPopG` pops the top of the stack and stores it in a global variable.
-      let val = stack.pop()
-      vm.globals[co.getArg1Str(pcIdx, currentChunk)] = val
-    of opcPushL:
-      # The `opcPushL` pushes a local variable onto the stack.
-      let idx = co.getArg1Int(pcIdx)
-      # ensureLocal(idx)
-      stack.push(stack[stackBottom + idx])
-    of opcPopL:
-      let idx = co.getArg1Int(pcIdx)
-      # ensureLocal(idx)
-      let val = stack.pop()
-      stack[stackBottom + idx] = val
-    # HTML generation
-    of opcAttrClass:
-      # special case for class attribute
-      result.add("class=\"" & co.getArg1Str(pcIdx, currentChunk) & "\"")
-    of opcAttrId:
-      result.add("id=\"" & co.getArg1Str(pcIdx, currentChunk) & "\"")
-    of opcWSpace:
-      result.add(" ")
-    of opcAttrEnd:
-      result.add(">")
-    of opcAttr:
-      let key = stack.pop().stringVal[]
-      let value = stack.pop()
-      result.add(key & "=\"")
-      case value.typeId
-      of tyString: result.add(value.stringVal[])
-      of tyInt:    result.add($value.intVal)
-      of tyFloat:  result.add($value.floatVal)
-      of tyBool:   result.add($(value.boolVal))
-      of tyJsonStorage:
-        result.add(value.jsonVal.toString())
-      else: discard
-      result.add("\"")
-    of opcAttrKey:
-      let attr = stack.pop()
-      if attr.stringVal[].len > 0:
-        result.add(" ") # leading space
-        result.add(attr.stringVal[])
-    of opcBeginHtmlWithAttrs:
-      result.add("<" & co.getArg1Str(pcIdx, currentChunk))
-    of opcBeginHtml:
-      result.add("<" & co.getArg1Str(pcIdx, currentChunk) & ">")
-    of opcTextHtml:
-      let v = stack.pop()
-      case v.typeId
-      of tyString: result.add(v.stringVal[])
-      of tyInt: result.add($v.intVal)
-      of tyFloat: result.add($v.floatVal)
-      of tyBool: result.add($(v.boolVal))
-      of tyJsonStorage: result.add(v.jsonVal.toString())
-      else: discard
-    of opcInnerHtml:
-      discard
-    of opcCloseHtml:
-      result.add("</" & co.getArg1Str(pcIdx, currentChunk) & ">")
-    # Arrays / Objects
-    of opcConstrArray:
-      let count = co.getArg1Int(pcIdx)
-      var arr = initArray(count)
-      if count > 0:
-        let vals = stack{^count}
-        for i in 0..<count:
-          arr.objectVal.fields[i] = vals[i]
-        stack.setLen(stack.len - count)
-      stack.push(arr)
-    of opcGetI:
-      let idxVal = stack.pop()
-      let arr = stack.pop()
-      stack.push(arr.objectVal.fields[idxVal.intVal])
-    of opcSetI:
-      let
-        val = stack.pop()
-        idxVal = stack.pop()
-        arr = stack.pop()
-      arr.objectVal.fields[idxVal.intVal] = val
-    of opcConstrObj:
-      let count = co.getArg1Int(pcIdx)
-      var obj = initObject(15, count)
-      if count > 0:
-        let vals = stack{^(count * 2)} # pairs: (key, value), (key, value)
-        for i in 0 ..< count:
-          let fieldKey = vals[2*i]
-          let fieldValue = vals[2*i + 1]
-          obj.objectVal.keys.add(fieldKey.stringVal[])
-          obj.objectVal.fields[i] = fieldValue
-        stack.setLen(stack.len - (count * 2))
-      stack.push(obj)
-    of opcGetF:
-      let fld = co.getArg1Int(pcIdx)
-      let obj = stack.pop()
-      stack.push(obj.objectVal.fields[fld])
-    of opcSetF:
-      let fld = co.getArg1Int(pcIdx)
-      let val = stack.pop()
-      let obj = stack.pop()
-      obj.objectVal.fields[fld] = val
-    # JSON (placeholders)
-    of opcGetJ:
-      let key = stack.pop()
-      let obj = stack.pop()
-      var jsonValue: JsonNode # the value to be pushed onto the stack
-      case key.typeId
-      of tyInt:
-        jsonValue = obj.jsonVal[key.intVal]
-      of tyString:
-        jsonValue = obj.jsonVal[key.stringVal[]]
-      else: discard
-      stack.push(initValue(jsonValue))
-    of opcSetJ:
-      discard # TODO
-    # Discard
-    of opcDiscard:
-      let n = co.getArg1Int(pcIdx)
-      if n > 0 and stack.len >= n:
-        stack.setLen(stack.len - n)
-    # Arithmetic
-    of opcNegI:
-      let a = stack.pop(); stack.push(initValue(-a.intVal))
-    of opcAddI, opcSubI, opcMultI, opcDivI:
-      let b = stack.pop() # rhs arg
-      let a = stack.pop() # lhs arg
+    extendableCase "vmInterpretCase":
       case oc
-        of opcAddI: stack.push(initValue(a.intVal + b.intVal))
-        of opcSubI: stack.push(initValue(a.intVal - b.intVal))
-        of opcMultI: stack.push(initValue(a.intVal * b.intVal))
-        of opcDivI: stack.push(initValue(a.intVal div b.intVal))
+      # Constants / simple pushes
+      of opcPushNil:
+        stack.push(initObject(co.getArg1Int(pcIdx).uint16, nilObject))
+      of opcPushI, opcPushF, opcPushS:
+        co.pushConst(pcIdx, currentChunk, stack)
+      of opcPushTrue:
+        stack.push(initValue(true))
+      of opcPushFalse:
+        stack.push(initValue(false))
+      # Variables
+      of opcPushG:
+        # The `opcPushG` pushes a global variable onto the stack.
+        stack.push(vm.globals[co.getArg1Str(pcIdx, currentChunk)])
+      of opcPopG:
+        # The `opcPopG` pops the top of the stack and stores it in a global variable.
+        let val = stack.pop()
+        vm.globals[co.getArg1Str(pcIdx, currentChunk)] = val
+      of opcPushL:
+        # The `opcPushL` pushes a local variable onto the stack.
+        let idx = co.getArg1Int(pcIdx)
+        # ensureLocal(idx)
+        stack.push(stack[stackBottom + idx])
+      of opcPopL:
+        let idx = co.getArg1Int(pcIdx)
+        # ensureLocal(idx)
+        let val = stack.pop()
+        stack[stackBottom + idx] = val
+      # Arrays / Objects
+      of opcConstrArray:
+        let count = co.getArg1Int(pcIdx)
+        var arr = initArray(count)
+        if count > 0:
+          let vals = stack{^count}
+          for i in 0..<count:
+            arr.objectVal.fields[i] = vals[i]
+          stack.setLen(stack.len - count)
+        stack.push(arr)
+      of opcGetI:
+        let idxVal = stack.pop()
+        let arr = stack.pop()
+        stack.push(arr.objectVal.fields[idxVal.intVal])
+      of opcSetI:
+        let
+          val = stack.pop()
+          idxVal = stack.pop()
+          arr = stack.pop()
+        arr.objectVal.fields[idxVal.intVal] = val
+      of opcConstrObj:
+        let count = co.getArg1Int(pcIdx)
+        var obj = initObject(15, count)
+        if count > 0:
+          let vals = stack{^(count * 2)} # pairs: (key, value), (key, value)
+          for i in 0 ..< count:
+            let fieldKey = vals[2*i]
+            let fieldValue = vals[2*i + 1]
+            obj.objectVal.keys.add(fieldKey.stringVal[])
+            obj.objectVal.fields[i] = fieldValue
+          stack.setLen(stack.len - (count * 2))
+        stack.push(obj)
+      of opcGetF:
+        let fld = co.getArg1Int(pcIdx)
+        let obj = stack.pop()
+        stack.push(obj.objectVal.fields[fld])
+      of opcSetF:
+        let fld = co.getArg1Int(pcIdx)
+        let val = stack.pop()
+        let obj = stack.pop()
+        obj.objectVal.fields[fld] = val
+      # JSON (placeholders)
+      of opcGetJ:
+        let key = stack.pop()
+        let obj = stack.pop()
+        var jsonValue: JsonNode # the value to be pushed onto the stack
+        case key.typeId
+        of tyInt:
+          jsonValue = obj.jsonVal[key.intVal]
+        of tyString:
+          jsonValue = obj.jsonVal[key.stringVal[]]
         else: discard
-    of opcNegF:
-      let a = stack.pop()
-      stack.push(initValue(-a.floatVal))
-    of opcAddF, opcSubF, opcMultF, opcDivF:
-      let b = stack.pop()
-      let a = stack.pop()
-      let av = if a.typeId == tyInt: a.intVal.toFloat else: a.floatVal
-      let bv = if b.typeId == tyInt: b.intVal.toFloat else: b.floatVal
-      case oc
-        of opcAddF: stack.push(initValue(av + bv))
-        of opcSubF: stack.push(initValue(av - bv))
-        of opcMultF: stack.push(initValue(av * bv))
-        of opcDivF: stack.push(initValue(av / bv))
-        else: discard
-    # Logic
-    of opcInvB:
-      let a = stack.pop()
-      stack.push(initValue(not a.boolVal))
-    # Relational
-    of opcEqB:
-      let b = stack.pop()
-      let a = stack.pop()
-      stack.push(initValue(a.boolVal == b.boolVal))
-    of opcEqI:
-      let b = stack.pop()
-      let a = stack.pop()
-      stack.push(initValue(a.intVal == b.intVal))
-    of opcLessI:
-      let b = stack.pop()
-      let a = stack.pop()
-      stack.push(initValue(a.intVal < b.intVal))
-    of opcGreaterI:
-      let b = stack.pop()
-      let a = stack.pop()
-      stack.push(initValue(a.intVal > b.intVal))
-    of opcEqF, opcLessF, opcGreaterF:
-      let b = stack.pop()
-      let a = stack.pop()
-      let 
-        av = if a.typeId == tyInt: a.intVal.toFloat else: a.floatVal
-        bv = if b.typeId == tyInt: b.intVal.toFloat else: b.floatVal
-      case oc
-        of opcEqF:
-          stack.push(initValue(av == bv))
-        of opcLessF:
-          stack.push(initValue(av < bv))
-        of opcGreaterF:
-          stack.push(initValue(av > bv))
-        else: discard
-    #
-    # Modules
-    #
-    of opcImportModule:
-      let chunkPath = co.getArg1Str(pcIdx, currentChunk)
-      # echo "---"
-      # echo currentChunk.file
-      # echo chunkPath
-      let other = script.scripts[chunkPath]
-      # echo other.mainChunk.file
-      # echo other.procs[70].name
-      # echo "---"
-      # store the current frame
-      storeFrame()
-      
-      stackBottom = stack.len
-      inc(vm.lvl) # increase module import level
-      
-      # switch to the imported module's main chunk
-      reloadChunk(other.mainChunk, other)
+        stack.push(initValue(jsonValue))
+      of opcSetJ:
+        discard # TODO
+      # Discard
+      of opcDiscard:
+        let n = co.getArg1Int(pcIdx)
+        if n > 0 and stack.len >= n:
+          stack.setLen(stack.len - n)
+      # Arithmetic
+      of opcNegI:
+        let a = stack.pop(); stack.push(initValue(-a.intVal))
+      of opcAddI, opcSubI, opcMultI, opcDivI:
+        let b = stack.pop() # rhs arg
+        let a = stack.pop() # lhs arg
+        case oc
+          of opcAddI: stack.push(initValue(a.intVal + b.intVal))
+          of opcSubI: stack.push(initValue(a.intVal - b.intVal))
+          of opcMultI: stack.push(initValue(a.intVal * b.intVal))
+          of opcDivI: stack.push(initValue(a.intVal div b.intVal))
+          else: discard
+      of opcNegF:
+        let a = stack.pop()
+        stack.push(initValue(-a.floatVal))
+      of opcAddF, opcSubF, opcMultF, opcDivF:
+        let b = stack.pop()
+        let a = stack.pop()
+        let av = if a.typeId == tyInt: a.intVal.toFloat else: a.floatVal
+        let bv = if b.typeId == tyInt: b.intVal.toFloat else: b.floatVal
+        case oc
+          of opcAddF: stack.push(initValue(av + bv))
+          of opcSubF: stack.push(initValue(av - bv))
+          of opcMultF: stack.push(initValue(av * bv))
+          of opcDivF: stack.push(initValue(av / bv))
+          else: discard
+      # Logic
+      of opcInvB:
+        let a = stack.pop()
+        stack.push(initValue(not a.boolVal))
+      # Relational
+      of opcEqB:
+        let b = stack.pop()
+        let a = stack.pop()
+        stack.push(initValue(a.boolVal == b.boolVal))
+      of opcEqI:
+        let b = stack.pop()
+        let a = stack.pop()
+        stack.push(initValue(a.intVal == b.intVal))
+      of opcLessI:
+        let b = stack.pop()
+        let a = stack.pop()
+        stack.push(initValue(a.intVal < b.intVal))
+      of opcGreaterI:
+        let b = stack.pop()
+        let a = stack.pop()
+        stack.push(initValue(a.intVal > b.intVal))
+      of opcEqF, opcLessF, opcGreaterF:
+        let b = stack.pop()
+        let a = stack.pop()
+        let 
+          av = if a.typeId == tyInt: a.intVal.toFloat else: a.floatVal
+          bv = if b.typeId == tyInt: b.intVal.toFloat else: b.floatVal
+        case oc
+          of opcEqF:
+            stack.push(initValue(av == bv))
+          of opcLessF:
+            stack.push(initValue(av < bv))
+          of opcGreaterF:
+            stack.push(initValue(av > bv))
+          else: discard
+      #
+      # Modules
+      #
+      of opcImportModule:
+        let chunkPath = co.getArg1Str(pcIdx, currentChunk)
+        let other = script.scripts[chunkPath]
+        storeFrame()
+        
+        stackBottom = stack.len
+        inc(vm.lvl) # increase module import level
+        
+        # switch to the imported module's main chunk
+        reloadChunk(other.mainChunk, other)
 
-      when defined(hayaVmWriteStackOps):
-        display(span("import:", fgGreen), span(chunkPath), span($currentChunk))
-      
-      continue # jump to new chunk
-    of opcImportModuleAlias, opcImportFromModule: discard # todo
-    #
-    # Control Flow
-    #
-    of opcJumpFwd:
-      let tgt = co.jumpTargets[pcIdx]
-      if tgt >= 0: pcIdx = tgt - 1
-    of opcJumpFwdT:
-      # jump if true
-      let cond = stack.peek().boolVal
-      if cond:
-        # we `peek` here; conditional jump does not pop
+        when defined(hayaVmWriteStackOps):
+          display(span("import:", fgGreen), span(chunkPath), span($currentChunk))
+        
+        continue # jump to new chunk
+      of opcImportModuleAlias, opcImportFromModule: discard # todo
+      #
+      # Control Flow
+      #
+      of opcJumpFwd:
         let tgt = co.jumpTargets[pcIdx]
         if tgt >= 0: pcIdx = tgt - 1
-        when defined(hayaVmWriteStackOps):
-          echo "JumpFwdT: tgt=", tgt, " cond=", cond
-    of opcJumpFwdF:
-      # jump if false
-      let cond = stack.peek().boolVal
-      if not cond:
-        # we `peek` instead of `pop` to allow reusing the condition
+      of opcJumpFwdT:
+        # jump if true
+        let cond = stack.peek().boolVal
+        if cond:
+          # we `peek` here; conditional jump does not pop
+          let tgt = co.jumpTargets[pcIdx]
+          if tgt >= 0: pcIdx = tgt - 1
+          when defined(hayaVmWriteStackOps):
+            echo "JumpFwdT: tgt=", tgt, " cond=", cond
+      of opcJumpFwdF:
+        # jump if false
+        let cond = stack.peek().boolVal
+        if not cond:
+          # we `peek` instead of `pop` to allow reusing the condition
+          let tgt = co.jumpTargets[pcIdx]
+          if tgt >= 0: pcIdx = tgt - 1
+          when defined(hayaVmWriteStackOps):
+            echo "JumpFwdF: tgt=", tgt, " cond=", cond
+      of opcJumpBack:
         let tgt = co.jumpTargets[pcIdx]
         if tgt >= 0: pcIdx = tgt - 1
-        when defined(hayaVmWriteStackOps):
-          echo "JumpFwdF: tgt=", tgt, " cond=", cond
-    of opcJumpBack:
-      let tgt = co.jumpTargets[pcIdx]
-      if tgt >= 0: pcIdx = tgt - 1
-    of opcCallD:
-      # The `opcCallD` calls a procedure defined
-      # in the current or another chunk.
-      let chunkPath = co.getArg1Str(pcIdx, currentChunk)
-      let procId = co.arg2[pcIdx].int
-      # Resolve initial target script by path or current
-      var targetScript =
-        if chunkPath == currentChunk.file: script
-        else:
-          if chunkPath in script.scripts:
-            script.scripts[chunkPath]
+      of opcCallD:
+        # The `opcCallD` calls a procedure defined
+        # in the current or another chunk.
+        let chunkPath = co.getArg1Str(pcIdx, currentChunk)
+        let procId = co.arg2[pcIdx].int
+        # Resolve initial target script by path or current
+        var targetScript =
+          if chunkPath == currentChunk.file: script
           else:
-            # fallback to vm.importedModules if present
-            if chunkPath in vm.importedModules:
-              vm.importedModules[chunkPath]
+            if chunkPath in script.scripts:
+              script.scripts[chunkPath]
             else:
-              raise newException(ValueError,
-                "opcCallD: target module not found: " & chunkPath)
+              # fallback to vm.importedModules if present
+              if chunkPath in vm.importedModules:
+                vm.importedModules[chunkPath]
+              else:
+                raise newException(ValueError,
+                  "opcCallD: target module not found: " & chunkPath)
 
-      let p = targetScript.procs[procId]
+        let p = targetScript.procs[procId]
 
-      # store the current frame
-      storeFrame()
+        # store the current frame
+        storeFrame()
 
-      if stack.len < p.paramCount:
-        # not enough arguments on stack
-        raise newException(ValueError,
-          "Not enough arguments on stack for call to " & p.name)
-      stackBottom = stack.len - p.paramCount
+        if stack.len < p.paramCount:
+          # not enough arguments on stack
+          raise newException(ValueError,
+            "Not enough arguments on stack for call to " & p.name)
+        stackBottom = stack.len - p.paramCount
 
-      when defined(hayaVmWriteStackOps):
-        # debug output for calls
-        display(span("opc:", fgGreen), span("<" & $opcCallD & ">"),
-          span("filePath=" & chunkPath & " procId=" & $procId & " name=" & p.name & " paramCount=" & $p.paramCount)) 
-      # switch to the called procedure's chunk          
-      case p.kind
-      of pkNative:
-        currentChunk = p.chunk
-        cached = vm.getCachedOps(currentChunk)
-        co = cached
-        pcIdx = 0
-        continue
-      of pkForeign:
-        let callResult =
-          if p.paramCount > 0:
-            p.foreign(stack{^p.paramCount}, p.paramCount)
-          else:
-            p.foreign(nil, 0)
-        restoreFrame() # after foreign call
-        if p.hasResult:
-          stack.push(callResult)
         when defined(hayaVmWriteStackOps):
-          if callResult != nil:
-            echo "Foreign call result: ", callResult
-          else:
-            echo "Foreign call result: nil"
-    of opcReturnVal:
-      let rv = stack.pop()
-      restoreFrame()
-      stack.push(rv)
-    of opcReturnVoid:
-      restoreFrame()
-      when defined(hayaVmWriteStackOps):
-        display(span("return:", fgGreen), span("void", fgCyan))
-    of opcViewLoader:
-      result.add(staticString.get())
-    of opcHalt:
-      if stack.len > 0:
-        echo "Warning: stack not empty at halt, contains ", stack.len, " items."
-        echo stack[^1].typeId
-      stack.setLen(0)
-      when defined(hayaVmWriteStackOps):
-        display(span("*** halt", fgRed), span("lvl=" & $vm.lvl))
-      if vm.lvl == 0:
-        break # top-level halt
-      else:
+          # debug output for calls
+          display(span("opc:", fgGreen), span("<" & $opcCallD & ">"),
+            span("filePath=" & chunkPath & " procId=" & $procId & " name=" & p.name & " paramCount=" & $p.paramCount)) 
+        # switch to the called procedure's chunk          
+        case p.kind
+        of pkNative:
+          currentChunk = p.chunk
+          cached = vm.getCachedOps(currentChunk)
+          co = cached
+          pcIdx = 0
+          continue
+        of pkForeign:
+          let callResult =
+            if p.paramCount > 0:
+              p.foreign(stack{^p.paramCount}, p.paramCount)
+            else:
+              p.foreign(nil, 0)
+          restoreFrame() # after foreign call
+          if p.hasResult:
+            stack.push(callResult)
+          when defined(hayaVmWriteStackOps):
+            if callResult != nil:
+              echo "Foreign call result: ", callResult
+            else:
+              echo "Foreign call result: nil"
+      of opcReturnVal:
+        let rv = stack.pop()
         restoreFrame()
-        dec(vm.lvl)
-    of opcNoop: discard
-    else:
-      discard
-    inc(pcIdx)
+        stack.push(rv)
+      of opcReturnVoid:
+        restoreFrame()
+        when defined(hayaVmWriteStackOps):
+          display(span("return:", fgGreen), span("void", fgCyan))
+      of opcViewLoader:
+        result.add(staticString.get())
+      of opcHalt:
+        if stack.len > 0:
+          echo "Warning: stack not empty at halt, contains ", stack.len, " items."
+          echo stack[^1].typeId
+        stack.setLen(0)
+        when defined(hayaVmWriteStackOps):
+          display(span("*** halt", fgRed), span("lvl=" & $vm.lvl))
+        if vm.lvl == 0:
+          break # top-level halt
+        else:
+          restoreFrame()
+          dec(vm.lvl)
+      of opcNoop: discard
+      else:
+        discard
+      inc(pcIdx)

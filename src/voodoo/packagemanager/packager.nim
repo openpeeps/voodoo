@@ -5,7 +5,7 @@
 #          https://github.com/openpeeps/tim
 
 import std/[tables, strutils, os, osproc, options, sequtils]
-import pkg/[flatty, nyml, semver, checksums/md5]
+import pkg/[flatty, nyml, semver, checksums/md5, openparser/json]
 import pkg/voodoo/language/ast
 
 import ./remote, ./configurator
@@ -131,6 +131,6 @@ proc loadPackages*(pkgr: Packager) =
   if pkgrIndexPath.fileExists:
     let db = readFile(pkgrIndexPath)
     if db.len > 0:
-      pkgr.packages = fromJson(readFile(pkgrIndexPath), PackagesTable)
+      pkgr.packages = fromJson(db, PackagesTable)
       return
   new(pkgr.packages)

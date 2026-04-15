@@ -9,7 +9,7 @@
 #          https://github.com/openpeeps/voodoo
 
 import std/[strutils, json]
-import pkg/voodoo/parsers/voojson
+import pkg/openparser/json
 
 const
   ValueSize* = max([
