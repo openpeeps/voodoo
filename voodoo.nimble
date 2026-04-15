@@ -11,8 +11,7 @@ srcDir        = "src"
 
 requires "nim >= 2.0.0"
 requires "htmlparser#head"
-requires "openparser"
-
+requires "https://github.com/openpeeps/openparser#head"
 
 task oop, "test oop":
   exec "nim c --out:./bin/oop src/voodoo/oop.nim"
