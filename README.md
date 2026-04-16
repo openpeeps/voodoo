@@ -22,9 +22,6 @@ to build awesome packages and applications using Nim's powerful macro system.
 ## 😍 Key Features
 - Generate fast `getters`/`setters` from object fields
 - Make `extensible` enums/objects
-- JSON parser with serialization/deserialization support
-- JSONL (line-delimited JSON) support
-- Agnostic proramming language framework
 
 ## Examples
 Here are some examples of what you can do with Voodoo.
@@ -106,76 +103,10 @@ assert compiles(Cardinal.south)
 assert compiles(Cardinal.east)
 ```
 
-### Voodoo JSON Parser
-Voodoo includes a powerful JSON parser that can serialize and deserialize Nim objects to and from JSON format. It supports various options for customization, such as line-delimited output and skipping default values.
-
-### Voodoo JSON features
-- Serialize/Deserialize Nim objects to/from JSON
-- JSONL - Line-delimited JSON output
-- Pretty printing and Minification
-- Date/Time formatting options
-- Depth/Size limits for parsing large JSON objects
-- Ignore unknown fields during deserialization
-- Handle duplicate keys in JSON objects
-- Custom Field Mapping
-- Scientific notation for numbers (e.g., `-123.456e+2`)
-
-### Voodoo JSON example
-
-
-Here is an example of how to serialize and deserialize Nim objects using Voodoo's JSON parser:
-
-```nim
-import voodoo/parsers/voojson
-
-type
-  Address* = object
-    city: string
-    country: string
-    street: string
-    zipCode: string
-
-  Person* = object
-    name: string
-    age: int
-    addresses: seq[Address]
-
-# serialize a Nim object to JSON
-let p1 = Person(
-  name: "John Doe",
-  age: 30,
-  addresses: @[
-    Address(street: "123 Main St"),
-    Address(city: "Springfield", country: "USA", zipCode: "12345")
-  ])
-
-let str = x.toJson(opts = JsonOptions(
-  pretty: true,
-  skipFields: @["age"]
-))
-
-# deserialize JSON to a Nim object
-var p2 = fromJson(str, Person)
-assert p1 == p2
-```
-
-
-#### Date/Time formatting
-Voodoo's JSON parser supports customizable date/time formatting options. You can specify the desired format for date/time fields during serialization and deserialization.
-
-#### Depth/Size limits
-To prevent potential denial-of-service attacks from maliciously crafted JSON inputs, Voodoo's JSON parser includes options to set depth and size limits.
-
-
-#### Custom Field Mapping
-You can define custom mappings for field names during serialization and deserialization. This is useful when the JSON field names differ from the Nim object field names.
-
-
 ### ❤ Contributions & Support
 - 🐛 Found a bug? [Create a new Issue](https://github.com/openpeeps/voodoo/issues)
 - 👋 Wanna help? [Fork it!](https://github.com/openpeeps/voodoo/fork)
 - 😎 [Get €20 in cloud credits from Hetzner](https://hetzner.cloud/?ref=Hm0mYGM9NxZ4)
-- 🥰 [Donate via PayPal address](https://www.paypal.com/donate/?hosted_button_id=RJK3ZTDWPL55C)
 
 ### 🎩 License
 MIT license. [Made by Humans from OpenPeeps](https://github.com/openpeeps).<br>
