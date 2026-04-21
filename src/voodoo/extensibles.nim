@@ -11,6 +11,7 @@ const
   Extendables* = CacheTable"Extendables"
   ExtendableEnums* = CacheTable"ExtendableEnums"
   ExtendableProcs* = CacheTable"ExtendableProcs"
+  ExtendableProcBodies* = CacheTable"ExtendableProcBodies"
   ExtendableModules* = CacheTable"ExtendableModules"
   ExtendableCases* = CacheTable"ExtendableCases"
 
@@ -80,47 +81,6 @@ macro extendCase*(struct: untyped) =
     # the first case, which is the case we want to extend
   Extendables[$objName & "_" & $caseFieldName] = newStmtList().add(objCases)
 
-template extendCase2*(fieldNode: untyped, branchesNode: untyped) =
-  ## Extend an object variant by adding new branches.
-  ## This macro can be mixed with `extendEnum
-  macro extendCaseMacro(x, branches) =
-    expectKind(x, nnkDotExpr)
-    let
-      objName = x[0]
-      fieldName = x[1]
-      moduleSource = instantiationInfo(fullPaths = true).filename
-    expectKind(branches, nnkStmtList)
-    var stmtBranches = newStmtList()
-    for br in branches:
-      if not br[0].eqIdent "branch":
-        error("Voodoo - Invalid branch extension. Expected a `branch` command")
-      echo br.treeRepr
-      let branchType = br[1]
-      expectKind(br, nnkCommand)
-      expectKind(br[1], nnkIdent)
-      expectKind(br[2], nnkStmtList)
-      var branch = newNimNode(nnkRecList)
-      for f in br[2]:
-        var fieldName: NimNode 
-        var implValue: NimNode
-        expectKind(f, nnkCall)
-        expectKind(f[1], nnkStmtList)
-        if f[1][0].kind == nnkAsgn:
-          fieldName = f[1][0][0]
-          implValue = f[1][0][1]
-        else:
-          fieldName = f[1][0]
-          implValue = newEmptyNode()
-        add branch,
-          nnkIdentDefs.newTree(
-            f[0], fieldName, implValue
-          )
-      add stmtBranches, nnkOfBranch.newTree(branchType, branch)
-      if br[^1].kind == nnkStmtList:
-        ExtendableProcs[moduleSource] = br[^1]
-    Extendables[$objName & "_" & $fieldName] = stmtBranches
-  extendCaseMacro(fieldNode, branchesNode)
-
 template extensibleCase* {.pragma.}
 
 macro extensible*(x: untyped) =
@@ -182,6 +142,37 @@ template extendableCase*(caseId: static string, caseStmtNode: untyped) =
       break
     result = caseStmt
   extendableCaseMacro(caseId, caseStmtNode)
+
+template placeholderSnippet*(snippetId: static string) =
+  ## A placeholder for injecting custom code into a proc or other code callback
+  ## based on the identifier of the placeholder.
+  macro placeholderSnippetMacro(id: static string) =
+    let snippetSourcePath = instantiationInfo(fullPaths = true).filename
+    if ExtendableProcBodies.hasKey(id):
+      result = nnkBlockStmt.newTree(
+        ident("VoodooInjectedSnippet_" & id),
+        ExtendableProcBodies[id]
+      )
+    else:
+      error("Voodoo - No snippet found for identifier: " & id & " in file: " & snippetSourcePath)
+  placeholderSnippetMacro(snippetId)
+
+macro injectSnippet*(id: static string, stmt: untyped): untyped =
+  ## Injects a custom snippet of code into a proc or other code callback
+  ## based on the identifier of the placeholder.
+  if ExtendableProcBodies.hasKey(id):
+    var existingProcs = ExtendableProcBodies[id]
+    if stmt.kind == nnkStmtList:
+      for procNode in stmt:
+        add existingProcs, procNode
+    else:
+      add existingProcs, stmt
+    ExtendableProcBodies[id] = existingProcs
+  else:
+    if stmt.kind == nnkStmtList:
+      ExtendableProcBodies[id] = stmt
+    else:
+      ExtendableProcBodies[id] = newStmtList().add(stmt)
 
 template injectHandles* =
   ## Injects custom procedures and other handles.
