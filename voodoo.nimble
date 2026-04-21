@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.8"
+version       = "0.1.9"
 author        = "George Lemon"
 description   = "Working with Nim's macros is just Voodoo"
 license       = "MIT"
@@ -10,8 +10,3 @@ srcDir        = "src"
 # Dependencies
 
 requires "nim >= 2.0.0"
-requires "htmlparser#head"
-requires "https://github.com/openpeeps/openparser#head"
-
-task oop, "test oop":
-  exec "nim c --out:./bin/oop src/voodoo/oop.nim"
