@@ -58,6 +58,7 @@
       <li><a class="reference" href="#ExtendableCases" title="ExtendableCases = r&quot;ExtendableCases&quot;">ExtendableCases</a></li>
 <li><a class="reference" href="#ExtendableEnums" title="ExtendableEnums = r&quot;ExtendableEnums&quot;">ExtendableEnums</a></li>
 <li><a class="reference" href="#ExtendableModules" title="ExtendableModules = r&quot;ExtendableModules&quot;">ExtendableModules</a></li>
+<li><a class="reference" href="#ExtendableProcBodies" title="ExtendableProcBodies = r&quot;ExtendableProcBodies&quot;">ExtendableProcBodies</a></li>
 <li><a class="reference" href="#ExtendableProcs" title="ExtendableProcs = r&quot;ExtendableProcs&quot;">ExtendableProcs</a></li>
 <li><a class="reference" href="#Extendables" title="Extendables = r&quot;Extendables&quot;">Extendables</a></li>
 
@@ -88,6 +89,10 @@
   <li><a class="reference" href="#extensible.m%2Cuntyped" title="extensible(x: untyped)">extensible(x: untyped)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">injectSnippet
+  <li><a class="reference" href="#injectSnippet.m%2Cstaticstring%2Cuntyped" title="injectSnippet(id: static string; stmt: untyped): untyped">injectSnippet(id: static string; stmt: untyped): untyped</a></li>
+
+</ul>
 
     </ul>
   </details>
@@ -100,10 +105,6 @@
   <li><a class="reference" href="#extendableCase.t%2Cstaticstring%2Cuntyped" title="extendableCase(caseId: static string; caseStmtNode: untyped)">extendableCase(caseId: static string; caseStmtNode: untyped)</a></li>
 
 </ul>
-<ul class="simple nested-toc-section">extendCase2
-  <li><a class="reference" href="#extendCase2.t%2Cuntyped%2Cuntyped" title="extendCase2(fieldNode: untyped; branchesNode: untyped)">extendCase2(fieldNode: untyped; branchesNode: untyped)</a></li>
-
-</ul>
 <ul class="simple nested-toc-section">extensibleCase
   <li><a class="reference" href="#extensibleCase.t" title="extensibleCase()">extensibleCase()</a></li>
 
@@ -114,6 +115,10 @@
 </ul>
 <ul class="simple nested-toc-section">injectHandles
   <li><a class="reference" href="#injectHandles.t" title="injectHandles()">injectHandles()</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">placeholderSnippet
+  <li><a class="reference" href="#placeholderSnippet.t%2Cstaticstring" title="placeholderSnippet(snippetId: static string)">placeholderSnippet(snippetId: static string)</a></li>
 
 </ul>
 
@@ -150,6 +155,14 @@
 </div>
 <div id="ExtendableModules">
   <dt><pre><a href="extensibles.html#ExtendableModules"><span class="Identifier">ExtendableModules</span></a> <span class="Other">=</span> <span class="StringLit">r&quot;ExtendableModules&quot;</span></pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+<div id="ExtendableProcBodies">
+  <dt><pre><a href="extensibles.html#ExtendableProcBodies"><span class="Identifier">ExtendableProcBodies</span></a> <span class="Other">=</span> <span class="StringLit">r&quot;ExtendableProcBodies&quot;</span></pre></dt>
   <dd>
     
     
@@ -233,6 +246,17 @@
 </div>
 
 </div>
+<div id="injectSnippet-macros-all">
+  <div id="injectSnippet.m,staticstring,untyped">
+  <dt><pre><span class="Keyword">macro</span> <a href="#injectSnippet.m%2Cstaticstring%2Cuntyped"><span class="Identifier">injectSnippet</span></a><span class="Other">(</span><span class="Identifier">id</span><span class="Other">:</span> <span class="Identifier">static</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">stmt</span><span class="Other">:</span> <span class="Identifier">untyped</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">untyped</span></pre></dt>
+  <dd>
+    
+    Injects a custom snippet of code into a proc or other code callback based on the identifier of the placeholder.
+    
+  </dd>
+</div>
+
+</div>
 
   </dl>
 </div>
@@ -245,19 +269,6 @@
   <dd>
     
     Extend an object variant by adding new branches at compile time.
-    
-  </dd>
-</div>
-
-</div>
-<div id="extendCase2-templates-all">
-  <div id="extendCase2.t,untyped,untyped">
-  <dt><pre><span class="Keyword">template</span> <a href="#extendCase2.t%2Cuntyped%2Cuntyped"><span class="Identifier">extendCase2</span></a><span class="Other">(</span><span class="Identifier">fieldNode</span><span class="Other">:</span> <span class="Identifier">untyped</span><span class="Other">;</span> <span class="Identifier">branchesNode</span><span class="Other">:</span> <span class="Identifier">untyped</span><span class="Other">)</span></pre></dt>
-  <dd>
-    
-    <pre>Extend an object variant by adding new branches.
-This macro can be mixed with `extendEnum</pre>
-
     
   </dd>
 </div>
@@ -296,6 +307,17 @@ This macro can be mixed with `extendEnum</pre>
 </div>
 
 </div>
+<div id="placeholderSnippet-templates-all">
+  <div id="placeholderSnippet.t,staticstring">
+  <dt><pre><span class="Keyword">template</span> <a href="#placeholderSnippet.t%2Cstaticstring"><span class="Identifier">placeholderSnippet</span></a><span class="Other">(</span><span class="Identifier">snippetId</span><span class="Other">:</span> <span class="Identifier">static</span> <span class="Identifier">string</span><span class="Other">)</span></pre></dt>
+  <dd>
+    
+    A placeholder for injecting custom code into a proc or other code callback based on the identifier of the placeholder.
+    
+  </dd>
+</div>
+
+</div>
 
   </dl>
 </div>
@@ -306,7 +328,7 @@ This macro can be mixed with `extendEnum</pre>
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-20 12:01:55 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-04-21 14:47:43 UTC</small>
       </div>
     </div>
   </div>
