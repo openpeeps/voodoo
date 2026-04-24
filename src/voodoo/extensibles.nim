@@ -153,8 +153,6 @@ template placeholderSnippet*(snippetId: static string) =
         ident("VoodooInjectedSnippet_" & id),
         ExtendableProcBodies[id]
       )
-    else:
-      error("Voodoo - No snippet found for identifier: " & id & " in file: " & snippetSourcePath)
   placeholderSnippetMacro(snippetId)
 
 macro injectSnippet*(id: static string, stmt: untyped): untyped =
