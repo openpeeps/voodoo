@@ -14,6 +14,7 @@ const
   ExtendableProcBodies* = CacheTable"ExtendableProcBodies"
   ExtendableModules* = CacheTable"ExtendableModules"
   ExtendableCases* = CacheTable"ExtendableCases"
+  ExtendableObjectFields* = CacheTable"ExtendableObjectFields"
 
 macro extendEnum*(x: untyped, fields: untyped) =
   ## Extend a specific enum by adding extra fields
@@ -33,6 +34,45 @@ macro extendEnum*(x: untyped, fields: untyped) =
       add ExtendableEnums[$x], xfield
   else:
     ExtendableEnums[$x] = otherFields
+
+macro extendObject*(struct: untyped) =
+  ## Extend an extensible object by adding new fields.
+  ## Usage:
+  ##   extendObject do:
+  ##     type MyObj = ref object
+  ##       field1: Type1
+  ##       field2: Type2
+  expectKind(struct, nnkStmtList)
+  expectKind(struct[0], nnkTypeSection)
+  let typeDef = struct[0][0]
+  expectKind(typeDef, nnkTypeDef)
+  let objName =
+    if typeDef[0].kind == nnkPragmaExpr:
+      if typeDef[0][0].kind == nnkPostfix:
+        typeDef[0][0][1]
+      else:
+        typeDef[0][0]
+    elif typeDef[0].kind == nnkPostfix:
+      typeDef[0][1]
+    else:
+      typeDef[0]
+  var recList: NimNode
+  if typeDef[2].kind == nnkRefTy:
+    expectKind(typeDef[2][0], nnkObjectTy)
+    recList = typeDef[2][0][2]
+  elif typeDef[2].kind == nnkObjectTy:
+    recList = typeDef[2][2]
+  else:
+    error("extendObject expects an object or ref object type")
+  var fields = newStmtList()
+  for child in recList:
+    if child.kind == nnkIdentDefs:
+      fields.add(child)
+  if ExtendableObjectFields.hasKey($objName):
+    for f in fields:
+      ExtendableObjectFields[$objName].add(f)
+  else:
+    ExtendableObjectFields[$objName] = fields
 
 macro extendModule*(modulePath: static string, x: untyped) =
   ## Extend a module by adding custom procedures
@@ -120,6 +160,9 @@ macro extensible*(x: untyped) =
               else:
                 insert(x[2][2][1], x[2][2][1].len - 1, br)
       else: discard
+    if ExtendableObjectFields.hasKey($objName):
+      for f in ExtendableObjectFields[$objName]:
+        obj.add(f)
   elif x[2].kind == nnkEnumTy:
     if ExtendableEnums.hasKey(objName.strVal):
       for enumField in ExtendableEnums[objName.strVal]:
@@ -127,7 +170,7 @@ macro extensible*(x: untyped) =
   x
 
 template extendableCase*(caseId: static string, caseStmtNode: untyped) =
-  ## Extend an object variant by adding new branches at compile time.
+  ## Extend a case by adding new branches at compile time.
   macro extendableCaseMacro(id: static string, caseStmt) =
     let caseSourcePath = instantiationInfo(fullPaths = true).filename
     expectKind(caseStmt, nnkStmtList)
