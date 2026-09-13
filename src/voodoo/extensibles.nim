@@ -93,6 +93,26 @@ macro extendModule*(modulePath: static string, x: untyped) =
       add newProcs, x
       ExtendableModules[modulePath] = newProcs
 
+macro extendProc*(modulePath: static string, x: untyped) =
+  ## Register procs (or any module-level declarations) to inject into
+  ## another module at its `injectHandles()` site. Mirrors `extendModule`,
+  ## but targets proc injection instead of open code blocks.
+  if ExtendableProcs.hasKey(modulePath):
+    var existingProcs = ExtendableProcs[modulePath]
+    if x.kind == nnkStmtList:
+      for procNode in x:
+        add existingProcs, procNode
+    else:
+      add existingProcs, x
+    ExtendableProcs[modulePath] = existingProcs
+  else:
+    if x.kind == nnkStmtList:
+      ExtendableProcs[modulePath] = x
+    else:
+      var newProcs = newStmtList()
+      add newProcs, x
+      ExtendableProcs[modulePath] = newProcs
+
 macro extendCaseStmt*(id: static string, caseStmt: untyped) =
   ## Extend an `case` statement by adding new branches at compile time.
   expectKind(caseStmt, nnkStmtList)
