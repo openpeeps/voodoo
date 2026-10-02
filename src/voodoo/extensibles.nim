@@ -4,7 +4,7 @@
 #          Made by Humans from OpenPeeps
 #          https://github.com/openpeeps/voodoo
 
-import std/[macros, macrocache]
+import std/[macros, macrocache, strutils]
 export macros, macrocache
 
 const
@@ -15,6 +15,18 @@ const
   ExtendableModules* = CacheTable"ExtendableModules"
   ExtendableCases* = CacheTable"ExtendableCases"
   ExtendableObjectFields* = CacheTable"ExtendableObjectFields"
+  InjectableCode* = CacheTable"InjectableCode"
+
+proc blockName(codeId: string): NimNode {.compileTime.} =
+  ## Turn an injection id into a valid block label, so that any
+  ## string can be used as an id.
+  var label = "voodooInjectedCode_"
+  for c in codeId:
+    if c.isAlphaNumeric or c == '_':
+      label.add c
+    else:
+      label.add '_'
+  ident(label)
 
 macro extendEnum*(x: untyped, fields: untyped) =
   ## Extend a specific enum by adding extra fields
@@ -218,6 +230,43 @@ template placeholderSnippet*(snippetId: static string) =
       )
   placeholderSnippetMacro(snippetId)
 
+macro injectCodeHandler*(id: static string, code: untyped): untyped =
+  ## Register a handler for injecting arbitrary code into a callee
+  ## at its `injectCode(id)` site. Multiple registrations for the same
+  ## id are appended in registration order.
+  ## Usage:
+  ##   injectCodeHandler "myHook":
+  ##     doSomething()
+  ##     doSomethingElse()
+  var handlerCode = newStmtList()
+  if code.kind == nnkStmtList:
+    for handlerStmt in code:
+      add handlerCode, handlerStmt
+  else:
+    add handlerCode, code
+  if InjectableCode.hasKey(id):
+    for handlerStmt in handlerCode:
+      add InjectableCode[id], handlerStmt
+  else:
+    InjectableCode[id] = handlerCode
+
+macro injectCodeAt*(id: static string): untyped =
+  ## Expand an injection site into a block holding any code registered
+  ## for `id` by `injectCodeHandler`. If no handler is registered for
+  ## `id`, the site expands to nothing.
+  ## Prefer `injectCode` or `injectHandler` over calling this directly.
+  if InjectableCode.hasKey(id):
+    result = InjectableCode[id]
+
+template injectCode*(id: static string) =
+  ## An injection site in a callee, that calls any code registered
+  ## for `id` by `injectCodeHandler`. Every site sharing the same id gets
+  ## the same code.
+  ## Usage:
+  ##   proc myProc() =
+  ##     injectCode "myHook"
+  injectCodeAt(id)
+
 macro injectSnippet*(id: static string, stmt: untyped): untyped =
   ## Injects a custom snippet of code into a proc or other code callback
   ## based on the identifier of the placeholder.
@@ -234,6 +283,11 @@ macro injectSnippet*(id: static string, stmt: untyped): untyped =
       ExtendableProcBodies[id] = stmt
     else:
       ExtendableProcBodies[id] = newStmtList().add(stmt)
+
+template injectHandler*(id: static string) =
+  ## An alias for `injectCode`, for injection sites that read as
+  ## calling a handler.
+  injectCodeAt(id)
 
 template injectHandles* =
   ## Injects custom procedures and other handles.
