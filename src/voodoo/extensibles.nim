@@ -295,8 +295,12 @@ template injectHandles* =
   ## original module.
   macro expandHandles =
     let moduleName = instantiationInfo(fullPaths = true).filename
+    # `instantiationInfo` returns native paths (`\` on Windows) while
+    # registration keys use `/`, so a plain `endsWith` never matches on
+    # Windows. Compare with normalized separators on both sides.
+    let normModuleName = moduleName.replace("\\", "/")
     for modulePath, procNode in ExtendableProcs:
-      if moduleName.endsWith(modulePath) and ExtendableProcs.hasKey(modulePath):
+      if normModuleName.endsWith(modulePath.replace("\\", "/")) and ExtendableProcs.hasKey(modulePath):
         result = ExtendableProcs[modulePath]
         break
   expandHandles()
@@ -305,8 +309,11 @@ template injectExtendedModule* =
   ## Inject custom code into the module.
   macro expandHandles =
     let moduleName = instantiationInfo(fullPaths = true).filename
+    # Same Windows separator normalization as in `injectHandles` above:
+    # native `\` paths must still match `/`-style registration keys.
+    let normModuleName = moduleName.replace("\\", "/")
     for modulePath, nimNode in ExtendableModules:
-      if moduleName.endsWith(modulePath) and ExtendableModules.hasKey(modulePath):
+      if normModuleName.endsWith(modulePath.replace("\\", "/")) and ExtendableModules.hasKey(modulePath):
         result = nimNode
         break
   expandHandles()
