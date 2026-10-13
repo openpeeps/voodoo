@@ -23,4 +23,4 @@ nim	injectCode	voodoo/extensibles.html#injectCode.t,staticstring	template inject
 nim	injectSnippet	voodoo/extensibles.html#injectSnippet.m,staticstring,untyped	macro injectSnippet(id: static string; stmt: untyped): untyped		270
 nim	injectHandler	voodoo/extensibles.html#injectHandler.t,staticstring	template injectHandler(id: static string)		287
 nim	injectHandles	voodoo/extensibles.html#injectHandles.t	template injectHandles()		292
-nim	injectExtendedModule	voodoo/extensibles.html#injectExtendedModule.t	template injectExtendedModule()		304
+nim	injectExtendedModule	voodoo/extensibles.html#injectExtendedModule.t	template injectExtendedModule()		308
